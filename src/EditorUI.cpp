@@ -173,30 +173,30 @@ int REEditorUI::getSmartObjectKey(int key, GJSmartDirection dir) {
 
 int REEditorUI::smartTypeForKey(int key) {
     switch(key) {
-    case 0:
-        return 1431;
-    case 1:
-        return 1461;
-    case 2:
-        return 1861;
-    case 3:
-        return 1865;
-    case 4:
-        return 1869;
-    case 5:
-        return 1874;
-    case 6:
-        return 1878;
-    case 7:
-        return 1882;
-    default:
-        return 2703;
-    case 9:
-        return 2704;
-    case 10:
-        return 2838;
-    case 11:
-        return 869;
+        case 0:
+            return 1431;
+        case 1:
+            return 1461;
+        case 2:
+            return 1861;
+        case 3:
+            return 1865;
+        case 4:
+            return 1869;
+        case 5:
+            return 1874;
+        case 6:
+            return 1878;
+        case 7:
+            return 1882;
+        default:
+            return 2703;
+        case 9:
+            return 2704;
+        case 10:
+            return 2838;
+        case 11:
+            return 869;
     }
 }
 
