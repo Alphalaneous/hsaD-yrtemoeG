@@ -3,6 +3,7 @@
 #include "Geode/loader/Log.hpp"
 #include <Geode/Enums.hpp>
 #include <Geode/binding/UndoObject.hpp>
+#include "LevelEditorLayer.hpp"
 
 uint64_t REEditorUI::s_rngSeed = 0;
 
@@ -3631,7 +3632,7 @@ void REEditorUI::editObject3_(CCObject* sender) {
 }
 
 void REEditorUI::editObjectSpecial(int type) {
-    ColorAction* baseAction = nullptr;
+    /*ColorAction* baseAction = nullptr;
     ColorAction* detailAction = nullptr;
     EffectGameObject* object = nullptr;
 
@@ -3665,7 +3666,12 @@ void REEditorUI::editObjectSpecial(int type) {
                 obj->updateObjectEditorColor();
             }
         }
-    }
+    }*/
+
+    // I put editColor in the wrong method somehow...
+
+    //todo
+    EditorUI::editObjectSpecial(type);
 }
 
 int REEditorUI::editorLayerForArray_(CCArray* objects, bool layer2) {
@@ -3836,8 +3842,99 @@ CCMenuItemSpriteExtra* REEditorUI::getButton_(char const* text, int width, SEL_M
 }
 
 CreateMenuItem* REEditorUI::getCreateBtn(int id, int bg) {
-    //todo
-    return EditorUI::getCreateBtn(id, bg);
+    const char* bgSprite = "GJ_button_01.png";
+    switch (bg) {
+        case 2: bgSprite = "GJ_button_02.png"; break;
+        case 3: bgSprite = "GJ_button_03.png"; break;
+        case 4: bgSprite = "GJ_button_04.png"; break;
+        case 5: bgSprite = "GJ_button_05.png"; break;
+        case 6: bgSprite = "GJ_button_06.png"; break;
+    }
+
+    GameObject* obj = nullptr;
+
+    if (id == 0x392 || id == 0x64F) {
+        auto texture = CCTextureCache::get()->addImage("bigFont.png", false);
+        obj = TextGameObject::create(texture);
+    }
+    else {
+        obj = GameObject::createWithKey(id);
+    }
+
+    auto frame = ObjectToolbox::sharedState()->intKeyToFrame(id);
+
+    obj->customSetup();
+    obj->addColorSprite(frame);
+    obj->setupCustomSprites(frame);
+
+    if (id == 0x392) {
+        static_cast<TextGameObject*>(obj)->updateTextObject("A", true);
+    }
+    else if (id == 0x64F) {
+        static_cast<TextGameObject*>(obj)->updateTextObject("0", true);
+    }
+    else if (id == 0x419) {
+        static_cast<EffectGameObject*>(obj)->updateSpecialColor();
+    }
+
+    if (obj->m_classType == GameObjectClassType::Effect) {
+        auto effect = static_cast<EffectGameObject*>(obj);
+
+        bool colorable = (effect->m_customColorType == 1) || (effect->m_customColorType == 0 && effect->m_maybeNotColorable);
+
+        if (!colorable && !effect->m_colorSprite && effect->m_baseColor->m_defaultColorID != 1004 && effect->m_shouldPreview) {
+            obj->setColor({255, 200, 200});
+        }
+    }
+
+    if (obj->m_opacityMod2 > 0.0f) {
+        obj->setOpacity(255);
+    }
+
+    auto normal = ButtonSprite::create(
+        obj,
+        32,
+        1,
+        32.0f,
+        1.0f,
+        false,
+        bgSprite,
+        true
+    );
+
+    auto rect = m_editorLayer->getObjectRect(obj, false, false);
+
+    float maxSize = std::max(rect.size.width, rect.size.height);
+    float scale = obj->getScale();
+
+    if (32.f / maxSize < scale || obj->m_pixelScaleX > 1.0f) {
+        obj->setScale(32.f / maxSize);
+    }
+
+    auto item = CreateMenuItem::create(
+        normal,
+        obj,
+        this,
+        menu_selector(EditorUI::onCreateButton)
+    );
+
+    item->m_objectID = id;
+    item->setScale(0.9f);
+    item->m_baseScale = 0.9f;
+
+    m_createButtonArray->addObject(item);
+
+    if (obj->m_colorSprite && !obj->m_unk28c) {
+        int z = obj->m_colorZLayerRelated ? 1 : -1;
+        obj->addChild(obj->m_colorSprite, z);
+
+        auto size = obj->getContentSize();
+        obj->m_colorSprite->setPosition(size / 2);
+        obj->m_colorSprite->setColor({255, 200, 200});
+        obj->m_colorSprite->setScale(1);
+    }
+
+    return item;
 }
 
 CreateMenuItem* REEditorUI::getCreateMenuItemButton_(CCSprite* sprite, SEL_MenuHandler selector, CCMenu* menu, float scale, int background, CCPoint offset) {
@@ -4179,50 +4276,6 @@ void REEditorUI::moveGamelayer(CCPoint offset) {
     constrainGameLayerPosition_();
 }
 
-class RELevelEditorLayer : public LevelEditorLayer {
-public:
-    void objectMoved(GameObject* object) {
-		if (!object) return;
-
-		constexpr std::array<int, 51> effectObjects = {
-			22, 23, 24, 25, 26, 27, 28, 31, 32, 33,
-			55, 56, 57, 58, 59, 1915, 2067,2903, 
-			2904, 2905, 2907, 2909, 2910, 2911, 2912, 
-			2913, 2914, 2915, 2916, 2917, 2919, 2920,
-			2921, 2922, 2923, 2924, 3006, 3007, 3008, 
-			3009, 3010, 3016, 3017, 3018, 3019, 3020, 
-			3021, 3022, 3023, 3024, 3660
-		};
-
-		constexpr std::array<int, 6> colorObjects = {
-			29, 30, 105, 899, 900, 915
-		};
-
-		if (std::find(effectObjects.begin(), effectObjects.end(), object->m_objectID) != effectObjects.end()) {
-			m_drawGridLayer->m_sortEffects = true;
-		}
-		else if (std::find(colorObjects.begin(), colorObjects.end(), object->m_objectID) != colorObjects.end()) {
-			m_colorTriggersChanged = true;
-		}
-		else if (object->m_objectID == 1007) {
-			m_alphaTriggersChanged = true;
-		}
-		else if (object->m_objectID == 1006) {
-			m_pulseTriggersChanged = true;
-		}
-		else if (object->m_objectID == 1268 || object->m_objectID == 2068) {
-			m_spawnTriggersChanged = true;
-		}
-
-		if (object->m_isSpawnOrderTrigger) {
-			m_spawnOrderObjectsChanged = true;
-		}
-		if (object->m_dontIgnoreDuration) {
-			static_cast<EffectGameObject*>(object)->m_endPosition = CCPoint{0, 0};
-		}
-	}
-};
-
 void REEditorUI::moveObject(GameObject* object, CCPoint offset) {
     if (!object) return;
     auto limitedPos = getLimitedPosition(object->getPosition() + offset);
@@ -4238,7 +4291,7 @@ void REEditorUI::moveObject(GameObject* object, CCPoint offset) {
         }
     }
 
-    static_cast<RELevelEditorLayer*>(m_editorLayer)->objectMoved(object);
+    static_cast<RELevelEditorLayer*>(m_editorLayer)->objectMoved_(object);
     
     if (object->isSpeedObject() || object->canReverse()) {
         m_editorLayer->m_drawGridLayer->m_updateSpeedObjects = true;
