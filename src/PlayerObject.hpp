@@ -237,5 +237,4 @@ class $modify(REPlayerObject, PlayerObject) {
     bool usingWallLimitedMode_();
     void yStartDown_();
     void yStartUp_();
-
 };

@@ -2307,20 +2307,10 @@ void REPlayerObject::playBumpEffect(int objectType, GameObject* player) {
     wave->setPosition(m_lastPortalPos);
 
     if (m_lastActivatedPortal) {
-        if (wave->m_target) {
-            wave->m_target->release();
-        }
-
-        wave->m_target = m_lastActivatedPortal;
-        m_lastActivatedPortal->retain();
-
-        wave->unschedule(schedule_selector(CCCircleWave::updatePosition));
-        wave->setPosition(m_lastActivatedPortal->getPosition());
-
-        auto playLayer = gameManager->m_playLayer;
-        wave->m_delegate = playLayer;
-
-        playLayer->m_circleWaveArray->addObject(wave);
+        wave->followObject(m_lastActivatedPortal, true);
+        wave->m_delegate = gameManager->m_playLayer;
+        
+        gameManager->m_playLayer->addCircle(wave);
     }
 
     m_parentLayer->addChild(wave, 0);
@@ -3649,10 +3639,9 @@ void REPlayerObject::spawnCircle() {
     wave->unschedule(schedule_selector(CCCircleWave::updatePosition));
     wave->setPosition(wave->m_target->getPosition());
 
-    auto playLayer = gameManager->m_playLayer;
-    wave->m_delegate = playLayer ? static_cast<CCCircleWaveDelegate*>(playLayer) : nullptr;
+    wave->m_delegate = gameManager->m_playLayer;
 
-    playLayer->m_circleWaveArray->addObject(wave);
+    gameManager->m_playLayer->m_circleWaveArray->addObject(wave);
     wave->m_circleMode = CircleMode::Outline;
 }
 
@@ -3729,18 +3718,10 @@ void REPlayerObject::spawnPortalCircle(cocos2d::ccColor3B color, float startRadi
     wave->setPosition(m_lastPortalPos);
 
     if (m_lastActivatedPortal) {
-        if (wave->m_target) {
-            wave->m_target->release();
-        }
-
-        wave->m_target = m_lastActivatedPortal;
-        m_lastActivatedPortal->retain();
-
-        wave->unschedule(schedule_selector(CCCircleWave::updatePosition));
-        wave->setPosition(m_lastActivatedPortal->getPosition());
-
-        wave->m_delegate = gameManager->m_playLayer ? static_cast<CCCircleWaveDelegate*>(gameManager->m_playLayer) : nullptr;
-        gameManager->m_playLayer->m_circleWaveArray->addObject(wave);
+        wave->followObject(m_lastActivatedPortal, true);
+        wave->m_delegate = gameManager->m_playLayer;
+        
+        gameManager->m_playLayer->addCircle(wave);
     }
 
     m_parentLayer->addChild(wave, 0);
@@ -3782,7 +3763,7 @@ void REPlayerObject::spawnScaleCircle() {
     wave->unschedule(schedule_selector(CCCircleWave::updatePosition));
     wave->setPosition(getPosition());
 
-    wave->m_delegate = gameManager->m_playLayer ? static_cast<CCCircleWaveDelegate*>(gameManager->m_playLayer) : nullptr;
+    wave->m_delegate = gameManager->m_playLayer;
     gameManager->m_playLayer->m_circleWaveArray->addObject(wave);
 }
 
@@ -3972,13 +3953,27 @@ bool REPlayerObject::switchedDirTo(PlayerButton button) {
 }
 
 void REPlayerObject::switchedToMode(GameObjectType type) {
-    toggleFlyMode(type == GameObjectType::ShipPortal, false);
-    toggleBirdMode(type == GameObjectType::UfoPortal, false);
-    toggleRollMode(type == GameObjectType::BallPortal, false);
-    toggleDartMode(type == GameObjectType::WavePortal, false);
-    toggleRobotMode(type == GameObjectType::RobotPortal, false);
-    toggleSpiderMode(type == GameObjectType::SpiderPortal, false);
-    toggleSwingMode(type == GameObjectType::SwingPortal, false);
+    if (type == GameObjectType::ShipPortal) return;
+
+    toggleFlyMode(false, false);
+    if (type == GameObjectType::UfoPortal) return;
+
+    toggleBirdMode(false, false);
+    if (type == GameObjectType::BallPortal) return;
+
+    toggleRollMode(false, false);
+    if (type == GameObjectType::WavePortal) return;
+
+    toggleDartMode(false, false);
+    if (type == GameObjectType::RobotPortal) return;
+    
+    toggleRobotMode(false, false);
+    if (type == GameObjectType::SpiderPortal) return;
+    
+    toggleSpiderMode(false, false);
+    if (type == GameObjectType::SwingPortal) return;
+
+    toggleSwingMode(false, false);
 }
 
 bool REPlayerObject::testForMoving_(float dt, GameObject* object) {
@@ -5681,6 +5676,5 @@ void REPlayerObject::yStartUp_() {
 
 /*
 known issues todo
-Portal flashes spawn at the wrong location sometimes (see end of dash)
 Gameplay rotation doesn't work (commented out broken code currently)
 */
