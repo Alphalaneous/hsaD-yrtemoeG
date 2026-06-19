@@ -1,5 +1,4 @@
 #include "PlayerObject.hpp"
-#include <Geode/binding/PlayerObject.hpp>
 
 PlayerObject* REPlayerObject::create(int player, int ship, GJBaseGameLayer* gameLayer, cocos2d::CCLayer* layer, bool playLayer) {
     auto ret = new PlayerObject();
@@ -215,15 +214,22 @@ void REPlayerObject::update(float dt) {
         }
     }
 
-    bool shouldHandleVehicleGroundParticles = m_isShip || m_isBird || m_isSwing;
-    bool canShowGroundParticles = m_isOnGround2 && !levelFlipping() && !m_isLocked && !m_isHidden && (!m_isPlatformer || m_platformerXVelocity > 2.5);
-
-    if (!shouldHandleVehicleGroundParticles) {
-        if (m_isDart) {
-            m_vehicleGroundParticles->stopSystem();
+    if (m_isShip) {
+        if (!m_jumpBuffered || levelFlipping() || m_isHidden) {
+            if (m_hasShipParticles) {
+                m_shipClickParticles->stopSystem();
+                m_hasShipParticles = false;
+            }
         }
-
-        if (!canShowGroundParticles) {
+        else {
+            if (!m_hasShipParticles) {
+                m_shipClickParticles->resumeSystem();
+                m_hasShipParticles = true;
+            }
+        }
+    }
+    else if (!m_isBird && !m_isSwing && !m_isDart) {
+        if ((!m_isOnGround2 || levelFlipping() || m_isLocked || m_isHidden) || (m_isPlatformer && std::abs(m_platformerXVelocity) <= 2.5)) {
             if (m_hasGroundParticles) {
                 auto action = getActionByTag(3);
                 if (!action) {
@@ -242,34 +248,17 @@ void REPlayerObject::update(float dt) {
             stopActionByTag(3);
         }
     }
-    else {
-        bool shouldShowShipParticles = m_jumpBuffered && !levelFlipping() && !m_isHidden;
 
-        if (!shouldShowShipParticles) {
-            if (m_hasShipParticles) {
-                m_shipClickParticles->stopSystem();
-            }
-            m_hasShipParticles = false;
-        }
-        else {
-            if (!m_hasShipParticles) {
-                m_shipClickParticles->resumeSystem();
-            }
-            m_hasShipParticles = true;
-        }
+    bool active = !m_isLocked && !m_isHidden;
+    bool moving = !m_isPlatformer || m_holdingLeft || m_holdingRight || m_platformerMovingLeft || m_platformerMovingRight;
 
-        bool canMoveVehicleGroundParticles = !m_isDart && m_isOnGround2 && !m_isLocked && !m_isHidden && (!m_isPlatformer || m_holdingLeft || m_holdingRight || m_platformerMovingLeft || m_platformerMovingRight);
-
-        bool validVerticalState = (!m_isUpsideDown && m_yVelocity > -1) || (m_isUpsideDown && m_yVelocity <= 1 && m_yVelocity != 1);
-
-        if (canMoveVehicleGroundParticles && validVerticalState) {
-            m_vehicleGroundParticles->resumeSystem();
-        }
-        else {
-            m_vehicleGroundParticles->stopSystem();
-        }
+    if (!m_isDart && (m_isBird || m_isSwing || m_isShip) && m_isOnGround2 && m_yVelocity * flipMod() > -1 && active && moving) {
+        m_vehicleGroundParticles->resumeSystem();
     }
-
+    else {
+        m_vehicleGroundParticles->stopSystem();
+    }
+    
     m_waveTrail->m_pulseSize = (m_audioScale - 0.1) * 2.1 + 0.4;
 
     if (m_playEffects) {
@@ -5634,11 +5623,13 @@ void REPlayerObject::updateStateVariables_() { //inline definition is sus
 void REPlayerObject::updateStaticForce_(float rotation, float staticForce, bool additive) {
     if (staticForce != 0.f || additive) {
         auto point = cocos2d::ccpForAngle(rotation * (M_PI / 180.f));
-        auto factor = sqrtf(point.x * point.x + point.y * point.y);
+        auto factor = std::sqrtf(point.x * point.x + point.y * point.y);
 
         if (factor > 0.f) {
             point = point * (staticForce / factor);
-            if (m_isSideways) std::swap(point.x, point.y);
+            if (m_isSideways) {
+                std::swap(point.x, point.y);
+            }
             updatePlayerForce(point, additive);
         }
     }
@@ -5690,8 +5681,6 @@ void REPlayerObject::yStartUp_() {
 
 /*
 known issues todo
-
-Regular trail shows in wave
 Portal flashes spawn at the wrong location sometimes (see end of dash)
 Gameplay rotation doesn't work (commented out broken code currently)
 */
