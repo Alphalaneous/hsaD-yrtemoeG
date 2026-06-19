@@ -1118,40 +1118,41 @@ void REPlayerObject::animatePlatformerJump(float scale) {
 
     if (!noInput || !allowedVehicle) return;
 
-    float rotation = this->getRotation();
+    int rotation = static_cast<int>(getRotation());
+    if (rotation < 0) rotation += 360;
 
-    int rot = std::abs((int)rotation);
+    float x1 = 0.8f;
+    float y1 = scale * 1.35f;
+    float x2 = 1.1f;
+    float y2 = 0.9f;
 
-    bool near45deg = (rot > 46 - 89 && rot < 46 + 89);
-    bool near225deg = (rot > 226 - 89 && rot < 226 + 89);
-
-    bool altShape = near45deg || near225deg;
-
-    float s1x, s1y, s2x, s2y;
-
-    if (!altShape) {
-        s1x = 0.8f;
-        s1y = scale * 1.35f;
-        s2x = 1.1f;
-        s2y = 0.9f;
-    }
-    else {
-        s1x = scale * 1.35f;
-        s1y = 0.8f;
-        s2x = 0.9f;
-        s2y = 1.1f;
+    if ((rotation > 45 && rotation <= 135) || (rotation > 225 && rotation <= 315)) {
+        std::swap(x1, y1);
+        std::swap(x2, y2);
     }
 
-    auto a1 = CCEaseInOut::create(CCScaleTo::create(0.1f / m_gravityMod, s1x, s1y), 2.f);
-    auto a2 = CCEaseInOut::create(CCScaleTo::create(0.25f / m_gravityMod, s2x, s2y), 2.f);
-    auto a3 = CCEaseInOut::create(CCScaleTo::create(0.15f / m_gravityMod, 1.f, 1.f), 2.f);
+    {
+        auto a1 = CCEaseInOut::create(CCScaleTo::create(0.1f / m_gravityMod, x1, y1), 2.f);
+        auto a2 = CCEaseInOut::create(CCScaleTo::create(0.25f / m_gravityMod, x2, y2), 2.f);
+        auto a3 = CCEaseInOut::create(CCScaleTo::create(0.15f / m_gravityMod, 1.f, 1.f), 2.f);
 
-    auto seq = CCSequence::create(a1, a2, a3, nullptr);
+        auto seq = CCSequence::create(a1, a2, a3, nullptr);
 
-    seq->setTag(13);
+        seq->setTag(13);
 
-    m_iconSprite->runAction(seq);
-    m_iconGlow->runAction(seq);
+        m_iconSprite->runAction(seq);
+    }
+    {
+        auto a1 = CCEaseInOut::create(CCScaleTo::create(0.1f / m_gravityMod, x1, y1), 2.f);
+        auto a2 = CCEaseInOut::create(CCScaleTo::create(0.25f / m_gravityMod, x2, y2), 2.f);
+        auto a3 = CCEaseInOut::create(CCScaleTo::create(0.15f / m_gravityMod, 1.f, 1.f), 2.f);
+
+        auto seq = CCSequence::create(a1, a2, a3, nullptr);
+
+        seq->setTag(13);
+
+        m_iconGlow->runAction(seq);
+    }
 }
 
 void REPlayerObject::boostPlayer(float yVelocity) {
