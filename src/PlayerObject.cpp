@@ -1680,13 +1680,13 @@ void REPlayerObject::disablePlayerControls() {
 }
 
 void REPlayerObject::disableSwingFire() {
-    m_swingFireMiddle->update(0.f);
+    m_swingFireMiddle->setVisible(false);
     m_swingFireMiddle->stopAllActions();
 
-    m_swingFireBottom->update(0.f);
+    m_swingFireBottom->setVisible(false);
     m_swingFireBottom->stopAllActions();
 
-    m_swingFireTop->update(0.f);
+    m_swingFireTop->setVisible(false);
     m_swingFireTop->stopAllActions();
 
     m_swingBurstParticles1->stopSystem();
@@ -1834,7 +1834,7 @@ void REPlayerObject::flashPlayer_(float flashDuration, float flashDelay, cocos2d
 }
 
 void REPlayerObject::flipGravity(bool flip, bool noEffects) {
-    if (m_isUpsideDown == flip)  return;
+    if (m_isUpsideDown == flip) return;
     
     placeStreakPoint();
     m_isUpsideDown = flip;
@@ -1880,13 +1880,8 @@ void REPlayerObject::flipGravity(bool flip, bool noEffects) {
 
     if (!m_isBall) {
         auto gameManager = GameManager::get();
-        auto playLayer = gameManager ? gameManager->m_playLayer : nullptr;
 
-        if (playLayer &&
-            !playLayer->m_freezeStartCamera &&
-            !m_isDart &&
-            !m_maybeReducedEffects) {
-            m_shouldTryPlacingCheckpoint = true;
+        if (gameManager->m_playLayer && !gameManager->m_playLayer->m_freezeStartCamera && !m_isDart && !m_maybeReducedEffects) { m_shouldTryPlacingCheckpoint = true;
             activateStreak();
         }
     }
@@ -2049,6 +2044,8 @@ void REPlayerObject::hitGroundNoJump(GameObject* object, bool notFlipped) {
 }
 
 void REPlayerObject::incrementJumps() {
+    if (!m_playEffects) return; 
+
     auto playLayer = GameManager::get()->m_playLayer;
 
     playLayer->m_hasJumped = true;
@@ -2302,22 +2299,24 @@ void REPlayerObject::playBumpEffect(int objectType, GameObject* player) {
     auto gameManager = GameManager::get();
     if (gameManager->m_performanceMode || !m_playEffects) return;
 
+    auto type = static_cast<GameObjectType>(objectType);
+
     float startRadius = 10.f;
-    if (m_vehicleSize >= 1.f && objectType == 0x22) {
+    if (m_vehicleSize >= 1.f && type == GameObjectType::RedJumpPad) {
         startRadius = 12.f;
     }
 
     auto wave = CCCircleWave::create(startRadius, 40.f, 0.25f, false, true);
 
-    ccColor3B color{255, 200, 0};
+    auto color = ccColor3B{255, 200, 0};
 
-    if (objectType == 9) {
+    if (type == GameObjectType::PinkJumpPad) {
         color = ccColor3B{255, 0, 0};
     }
-    else if (objectType == 10) {
-        color = ccColor3B{0, 255, 0};
+    else if (type == GameObjectType::GravityPad) {
+        color = ccColor3B{0, 255, 255};
     }
-    else if (objectType == 0x2c) {
+    else if (type == GameObjectType::SpiderPad) {
         color = ccColor3B{255, 50, 255};
     }
 
@@ -2498,7 +2497,7 @@ void REPlayerObject::playerDestroyed(bool noEffects) {
 
     if (m_robotFire) {
         m_robotFire->stopAllActions();
-        m_robotFire->update(0.2f);
+        m_robotFire->setVisible(false);
     }
 
     toggleGhostEffect(GhostType::Disabled);
@@ -3380,7 +3379,7 @@ void REPlayerObject::rotateGameplay(int moveDirection, int groundDirection, bool
 }
 
 void REPlayerObject::rotateGameplayObject(GameObject* object) {
-    if (m_rotateObjectsRelated.contains(m_uniqueID)) return;
+    /*if (m_rotateObjectsRelated.contains(m_uniqueID)) return;
     
     auto oldObjectPos = object->getRealPosition();
     auto playerPos = getPosition();
@@ -3412,7 +3411,8 @@ void REPlayerObject::rotateGameplayObject(GameObject* object) {
         object->determineSlopeDirection();
     }
 
-    m_rotateObjectsRelated[m_uniqueID] = delta;
+    m_rotateObjectsRelated[m_uniqueID] = delta;*/
+    PlayerObject::rotateGameplayObject(object);
 }
 
 void REPlayerObject::rotateGameplayOnly_(bool sideways) {
@@ -4083,7 +4083,7 @@ void REPlayerObject::toggleBirdMode(bool enable, bool noEffects) {
 
     stopPlatformerJumpAnimation();
 
-    m_iconSprite->setScale(1.f);
+    m_iconSprite->setScale(0.55f);
     m_iconSprite->setPosition({0.f, 5.f});
 
     m_vehicleSprite->setVisible(true);
@@ -4219,7 +4219,7 @@ void REPlayerObject::toggleFlyMode(bool enable, bool noEffects) {
     m_isBallRotating = false;
     m_rotationSpeed = 0.f;
     m_yVelocity *= 0.5;
-    setRRotation(0.f);
+    setRotation(0.f);
 
     m_isOnGround2 = false;
     m_isOnGround = false;
@@ -4240,7 +4240,7 @@ void REPlayerObject::toggleFlyMode(bool enable, bool noEffects) {
     if (!m_isPlatformer) {
         updatePlayerShipFrame(gameManager->m_playerShip);
 
-        m_iconSprite->setScale(1.f);
+        m_iconSprite->setScale(0.55f);
         m_iconSprite->setPosition({0.f, 5.f});
         vehicleOffsetY = -5.f;
     }
@@ -4847,7 +4847,7 @@ void REPlayerObject::toggleSwingMode(bool enable, bool noEffects) {
     m_isBallRotating = false;
     m_rotationSpeed = 0.f;
     m_yVelocity *= 0.5;
-    setRRotation(0.f);
+    setRotation(0.f);
 
     m_isOnGround2 = false;
     m_isOnGround = false;
@@ -5379,16 +5379,38 @@ void REPlayerObject::updateMove(float dt) {
 }
 
 void REPlayerObject::updatePlayerArt() {
-    m_mainLayer->setScaleX(1.f);
-    m_mainLayer->setScaleY(1.f);
-    m_mainLayer->setRotation(0.f);
+    m_mainLayer->setScaleX(reverseMod());
 
-    m_playerGroundParticles->stopSystem();
-    m_trailingParticles->stopSystem();
-    m_shipClickParticles->stopSystem();
+    if (!m_isSwing && !m_isBall && !isInNormalMode()) {
+        m_mainLayer->setScaleY((m_isSideways ? -1 : 1) * flipMod());
+    }
+    else {
+        m_mainLayer->setScaleY(1);
+    }
 
-    float gravityY = m_isUpsideDown ? 300.f : -300.f;
-    CCPoint gravity{0.f, gravityY};
+    float baseRotation = m_isSideways ? -90.f : 0.f;
+
+    m_mainLayer->setRotation(baseRotation);
+
+    int flip = flipMod();
+    float angle1;
+
+    if (!m_isSideways) {
+        angle1 = static_cast<float>(flip * 90);
+    } 
+    else {
+        angle1 = 0.0f;
+        if (!m_isGoingLeft) {
+            angle1 = 180.0f;
+        }
+    }
+
+    m_playerGroundParticles->setAngle(angle1);
+    m_trailingParticles->setAngle(angle1);
+    m_shipClickParticles->setAngle(angle1);
+
+    float gravityY = flipMod() * -300.f;
+    auto gravity = CCPoint{0.f, gravityY};
 
     if (m_isSideways) {
         std::swap(gravity.x, gravity.y);
@@ -5406,8 +5428,19 @@ void REPlayerObject::updatePlayerArt() {
     m_trailingParticles->setPosVar(variance1);
     m_shipClickParticles->setPosVar(variance1);
 
-    m_ufoClickParticles->stopSystem();
-    m_robotBurstParticles->stopSystem();
+    float angle2;
+    if (!m_isSideways) {
+        angle2 = flip * 330;
+    }
+    else if (!m_isGoingLeft) {
+        angle2 = 240.0;
+    }
+    else {
+        angle2 = 60.0;
+    }
+
+    m_ufoClickParticles->setAngle(angle2);
+    m_robotBurstParticles->setAngle(angle2);
 
     auto variance2 = CCPoint{5.f, 1.f};
     if (m_isSideways) {
@@ -5677,3 +5710,11 @@ void REPlayerObject::yStartUp_() {
     m_yStart += 0.01;
     logValues();
 }
+
+/*
+known issues todo
+
+Regular trail shows in wave
+Portal flashes spawn at the wrong location sometimes (see end of dash)
+Gameplay rotation doesn't work (commented out broken code currently)
+*/
