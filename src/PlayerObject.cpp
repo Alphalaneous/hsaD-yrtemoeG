@@ -864,7 +864,7 @@ void REPlayerObject::resetObject() {
 
     m_actionManager->stopAllInternalActions();
 
-    m_physDeltaRelated = 0.0f;
+    m_physDeltaRelated = 0.f;
     m_wasTeleported = false;
     m_isCollidingWithSlope = false;
     m_collidedObject = nullptr;
@@ -875,17 +875,17 @@ void REPlayerObject::resetObject() {
     m_collidingWithLeft = nullptr;
     m_collidingWithRight = nullptr;
     m_scaleXRelated2 = 0.0;
-    m_groundYVelocity = 0.0f;
+    m_groundYVelocity = 0.f;
     m_scaleXRelated3 = 0.0;
     m_scaleXRelated4 = 0.0;
-    m_yVelocityRelated = 0.0f;
-    m_scaleXRelated5 = 0.0f;
+    m_yVelocityRelated = 0.f;
+    m_scaleXRelated5 = 0.f;
     m_ringJumpRelated = false;
-    m_maybeReverseSpeed = 0.0f;
-    m_maybeReverseAcceleration = 0.0f;
+    m_maybeReverseSpeed = 0.f;
+    m_maybeReverseAcceleration = 0.f;
 
     doReversePlayer(false);
-    rotateGameplay(2, 4, false, 0.0f, 0.0f, false, false);
+    rotateGameplay(2, 4, false, 0.f, 0.f, false, false);
 
     m_platformerXVelocity = 0.f;
     m_maybeHasStopped = false;
@@ -914,7 +914,7 @@ void REPlayerObject::resetObject() {
 
     toggleVisibility(true);
 
-    m_flashTime = -1.0f;
+    m_flashTime = -1.f;
 
     setColor(m_originalMainColor);
     setSecondColor(m_originalSecondColor);
@@ -963,7 +963,7 @@ void REPlayerObject::resetObject() {
 
     if (m_spiderSprite) {
         m_spiderSprite->stopActionByTag(10);
-        m_spiderSprite->setScale(1.0f);
+        m_spiderSprite->setScale(1.f);
     }
 
     m_checkpointTimeout = false;
@@ -1010,8 +1010,8 @@ void REPlayerObject::resetObject() {
     m_isRotating = false;
     m_isBallRotating2 = false;
     m_isBallRotating = false;
-    m_rotationSpeed = 0.0f;
-    setRotation(0.0f);
+    m_rotationSpeed = 0.f;
+    setRotation(0.f);
 
     m_isDead = false;
 
@@ -1211,7 +1211,7 @@ void REPlayerObject::bumpPlayer(float bumpMod, int objectType, bool noEffects, G
         propellPlayer(bumpMod, noEffects, objectType);
 
         if (m_isPlatformer && !m_isRotating) {
-            float scale = objectType == 34 ? 1.2f : 1.0f;
+            float scale = objectType == 34 ? 1.2f : 1.f;
             animatePlatformerJump(scale);
         }
 
@@ -2348,9 +2348,9 @@ void REPlayerObject::playBurstEffect_() {
         m_ufoClickParticles->resumeSystem();
         stopActionByTag(7);
 
-        auto action = cocos2d::CCSequence::create(
-            cocos2d::CCDelayTime::create(.12f),
-            cocos2d::CCCallFunc::create(this, callfunc_selector(PlayerObject::stopBurstEffect)),
+        auto action = CCSequence::create(
+            CCDelayTime::create(.12f),
+            CCCallFunc::create(this, callfunc_selector(PlayerObject::stopBurstEffect)),
             nullptr
         );
         action->setTag(7);
@@ -2542,7 +2542,7 @@ bool REPlayerObject::playerIsMovingUp_() {
 
 void REPlayerObject::playerTeleported_() {
     m_isOnGround2 = false;
-    m_lastGroundedPos = cocos2d::CCPoint { 0.f, 0.f };
+    m_lastGroundedPos = CCPoint{ 0.f, 0.f};
     placeStreakPoint();
 }
 
@@ -3488,7 +3488,7 @@ void REPlayerObject::runBallRotation2() {
 }
 
 void REPlayerObject::runNormalRotation_() {
-    runNormalRotation(false, 1.0f);
+    runNormalRotation(false, 1.f);
 }
 
 void REPlayerObject::runNormalRotation(bool notNormalMode, float speed) {
@@ -5399,9 +5399,9 @@ void REPlayerObject::updatePlayerArt() {
         angle1 = static_cast<float>(flip * 90);
     } 
     else {
-        angle1 = 0.0f;
+        angle1 = 0.f;
         if (!m_isGoingLeft) {
-            angle1 = 180.0f;
+            angle1 = 180.f;
         }
     }
 
@@ -5433,10 +5433,10 @@ void REPlayerObject::updatePlayerArt() {
         angle2 = flip * 330;
     }
     else if (!m_isGoingLeft) {
-        angle2 = 240.0;
+        angle2 = 240.f;
     }
     else {
-        angle2 = 60.0;
+        angle2 = 60.f;
     }
 
     m_ufoClickParticles->setAngle(angle2);
