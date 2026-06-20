@@ -3335,7 +3335,7 @@ void REPlayerObject::rotateGameplay(int moveDirection, int groundDirection, bool
 }
 
 void REPlayerObject::rotateGameplayObject(GameObject* object) {
-    /*if (m_rotateObjectsRelated.contains(m_uniqueID)) return;
+    if (m_rotateObjectsRelated.contains(object->m_uniqueID)) return;
     
     auto oldObjectPos = object->getRealPosition();
     auto playerPos = getPosition();
@@ -3367,8 +3367,7 @@ void REPlayerObject::rotateGameplayObject(GameObject* object) {
         object->determineSlopeDirection();
     }
 
-    m_rotateObjectsRelated[m_uniqueID] = delta;*/
-    PlayerObject::rotateGameplayObject(object);
+    m_rotateObjectsRelated[object->m_uniqueID] = delta;
 }
 
 void REPlayerObject::rotateGameplayOnly_(bool sideways) {
@@ -3954,26 +3953,54 @@ bool REPlayerObject::switchedDirTo(PlayerButton button) {
 }
 
 void REPlayerObject::switchedToMode(GameObjectType type) {
-    if (type == GameObjectType::ShipPortal) return;
-
-    toggleFlyMode(false, false);
-    if (type == GameObjectType::UfoPortal) return;
-
+    if (type == GameObjectType::ShipPortal) {
+        toggleBirdMode(false, false);
+        toggleRollMode(false, false);
+        toggleDartMode(false, false);
+        toggleRobotMode(false, false);
+        toggleSpiderMode(false, false);
+        toggleSwingMode(false, false);
+        return;
+    }
+    toggleFlyMode(false,false);
+    if (type == GameObjectType::UfoPortal) {
+        toggleRollMode(false, false);
+        toggleDartMode(false, false);
+        toggleRobotMode(false, false);
+        toggleSpiderMode(false, false);
+        toggleSwingMode(false, false);
+        return;
+    }
     toggleBirdMode(false, false);
-    if (type == GameObjectType::BallPortal) return;
-
+    if (type == GameObjectType::BallPortal) {
+        toggleDartMode(false, false);
+        toggleRobotMode(false, false);
+        toggleSpiderMode(false, false);
+        toggleSwingMode(false, false);
+        return;
+    }
     toggleRollMode(false, false);
-    if (type == GameObjectType::WavePortal) return;
-
+    if (type == GameObjectType::WavePortal) {
+        toggleRobotMode(false, false);
+        toggleSpiderMode(false, false);
+        toggleSwingMode(false, false);
+        return;
+    }
     toggleDartMode(false, false);
-    if (type == GameObjectType::RobotPortal) return;
-    
+    if (type == GameObjectType::RobotPortal) {
+        toggleSpiderMode(false, false);
+        toggleSwingMode(false, false);
+        return;
+    }
     toggleRobotMode(false, false);
-    if (type == GameObjectType::SpiderPortal) return;
-    
+    if (type == GameObjectType::SpiderPortal) {
+        toggleSwingMode(false, false);
+        return;
+    }
     toggleSpiderMode(false, false);
-    if (type == GameObjectType::SwingPortal) return;
-
+    if (type == GameObjectType::SwingPortal) {
+        return;
+    }
     toggleSwingMode(false, false);
 }
 
@@ -4967,7 +4994,7 @@ void REPlayerObject::tryPlaceCheckpoint() {
 }
 
 void REPlayerObject::unrotateGameplayObject(GameObject* object) {
-    /*auto it = m_rotateObjectsRelated.find(object->m_uniqueID);
+    auto it = m_rotateObjectsRelated.find(object->m_uniqueID);
     if (it == m_rotateObjectsRelated.end()) return;
     
     object->setObjectRectDirty(true);
@@ -4990,9 +5017,7 @@ void REPlayerObject::unrotateGameplayObject(GameObject* object) {
         object->determineSlopeDirection();
     }
 
-    m_rotateObjectsRelated.erase(it);*/
-
-    PlayerObject::unrotateGameplayObject(object);
+    m_rotateObjectsRelated.erase(it);
 }
 
 void REPlayerObject::unrotatePreSlopeObjects_() {
@@ -5677,5 +5702,4 @@ void REPlayerObject::yStartUp_() {
 
 /*
 known issues todo
-Gameplay rotation doesn't work (commented out broken code currently)
 */
