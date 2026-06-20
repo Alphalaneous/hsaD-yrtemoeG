@@ -3953,55 +3953,13 @@ bool REPlayerObject::switchedDirTo(PlayerButton button) {
 }
 
 void REPlayerObject::switchedToMode(GameObjectType type) {
-    if (type == GameObjectType::ShipPortal) {
-        toggleBirdMode(false, false);
-        toggleRollMode(false, false);
-        toggleDartMode(false, false);
-        toggleRobotMode(false, false);
-        toggleSpiderMode(false, false);
-        toggleSwingMode(false, false);
-        return;
-    }
-    toggleFlyMode(false,false);
-    if (type == GameObjectType::UfoPortal) {
-        toggleRollMode(false, false);
-        toggleDartMode(false, false);
-        toggleRobotMode(false, false);
-        toggleSpiderMode(false, false);
-        toggleSwingMode(false, false);
-        return;
-    }
-    toggleBirdMode(false, false);
-    if (type == GameObjectType::BallPortal) {
-        toggleDartMode(false, false);
-        toggleRobotMode(false, false);
-        toggleSpiderMode(false, false);
-        toggleSwingMode(false, false);
-        return;
-    }
-    toggleRollMode(false, false);
-    if (type == GameObjectType::WavePortal) {
-        toggleRobotMode(false, false);
-        toggleSpiderMode(false, false);
-        toggleSwingMode(false, false);
-        return;
-    }
-    toggleDartMode(false, false);
-    if (type == GameObjectType::RobotPortal) {
-        toggleSpiderMode(false, false);
-        toggleSwingMode(false, false);
-        return;
-    }
-    toggleRobotMode(false, false);
-    if (type == GameObjectType::SpiderPortal) {
-        toggleSwingMode(false, false);
-        return;
-    }
-    toggleSpiderMode(false, false);
-    if (type == GameObjectType::SwingPortal) {
-        return;
-    }
-    toggleSwingMode(false, false);
+    if (type != GameObjectType::ShipPortal) toggleFlyMode(false, false);
+    if (type != GameObjectType::UfoPortal) toggleBirdMode(false, false);
+    if (type != GameObjectType::BallPortal) toggleRollMode(false, false);
+    if (type != GameObjectType::WavePortal) toggleDartMode(false, false);
+    if (type != GameObjectType::RobotPortal) toggleRobotMode(false, false);
+    if (type != GameObjectType::SpiderPortal) toggleSpiderMode(false, false);
+    if (type != GameObjectType::SwingPortal) toggleSwingMode(false, false);
 }
 
 bool REPlayerObject::testForMoving_(float dt, GameObject* object) {
