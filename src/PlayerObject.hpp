@@ -6,13 +6,13 @@
 
 using namespace geode::prelude;
 
-class $modify(REPlayerObject, PlayerObject) {
+std::string getFrameForStreak__(ShipStreak type, float time);
+void snapRotation360__(float& rotaion);
+CCPoint offsetForStreak__(ShipStreak type);
+void getSettingsForStreak__(ShipStreak type, float speed, float scale, float& outA, float& outB);
+void updateStreakSettings__(CCMotionStreak* streak, ShipStreak streakType, PlayerObject* player);
 
-    static std::string getFrameForStreak__(ShipStreak type, float time);
-    static void snapRotation360__(float& rotaion);
-    static CCPoint offsetForStreak__(ShipStreak type);
-    static void getSettingsForStreak__(ShipStreak type, float speed, float scale, float& outA, float& outB);
-    static void updateStreakSettings__(CCMotionStreak* streak, ShipStreak streakType, PlayerObject* player);
+class $modify(REPlayerObject, PlayerObject) {
 
     static PlayerObject* create(int player, int ship, GJBaseGameLayer* gameLayer, cocos2d::CCLayer* layer, bool playLayer);
     void update(float dt);

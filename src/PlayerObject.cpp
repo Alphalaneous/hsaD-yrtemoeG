@@ -362,7 +362,7 @@ void REPlayerObject::update(float dt) {
     }
 }
 
-std::string REPlayerObject::getFrameForStreak__(ShipStreak type, float time) { // FIX BINDINGS 0x386060 windows 2.2084 add to bindings, static method
+std::string getFrameForStreak__(ShipStreak type, float time) { // FIX BINDINGS 0x386060 windows 2.2084 add to bindings, static method
     float frameRate;
     int frameCount;
 
@@ -693,7 +693,7 @@ void REPlayerObject::setPosition(cocos2d::CCPoint const& position) {
     m_waveTrail->setPosition(getPosition());
 }
 
-CCPoint REPlayerObject::offsetForStreak__(ShipStreak type) {
+CCPoint offsetForStreak__(ShipStreak type) {
     switch (type) {
         case ShipStreak::ShipFire2: return {-8.f, -3.f};
         case ShipStreak::ShipFire3: return {-8.f, -3.5f};
@@ -1861,7 +1861,7 @@ void REPlayerObject::levelWillFlip() {
     deactivateStreak_(true);
 }
 
-void REPlayerObject::snapRotation360__(float& rotation) {
+void snapRotation360__(float& rotation) {
     if (rotation > 180.f) {
         rotation -= 360.f;
     }
@@ -3851,7 +3851,7 @@ void REPlayerObject::togglePlayerScale(bool enable, bool noEffects) {
     updateRobotAnimationSpeed();
 }
 
-void REPlayerObject::updateStreakSettings__(CCMotionStreak* streak, ShipStreak streakType, PlayerObject* player) {
+void updateStreakSettings__(CCMotionStreak* streak, ShipStreak streakType, PlayerObject* player) {
     float fade = 0.f;
     float stroke = 0.f;
 
@@ -3861,7 +3861,7 @@ void REPlayerObject::updateStreakSettings__(CCMotionStreak* streak, ShipStreak s
     streak->setStroke(stroke);
 }
 
-void REPlayerObject::getSettingsForStreak__(ShipStreak type, float speed, float scale, float& outA, float& outB) {
+void getSettingsForStreak__(ShipStreak type, float speed, float scale, float& outA, float& outB) {
     float scaleMod = scale == 1.f ? 1.f : 0.5f;
     float a = 0.f;
     float b = 0.f;
