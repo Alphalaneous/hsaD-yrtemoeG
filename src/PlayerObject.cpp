@@ -4230,14 +4230,10 @@ void REPlayerObject::toggleSwingMode(bool enable, bool noEffects) {
         m_shipClickParticles->stopSystem();
         m_hasShipParticles = false;
 
-        if (m_hasGroundParticles) {
-            m_playerGroundParticles->stopSystem();
-        }
-        m_hasGroundParticles = false;
-
+        deactivateParticle_();
         activateStreak();
 
-        m_swingFireMiddle->update(0.f);
+        m_swingFireMiddle->setVisible(true);
         m_swingFireMiddle->loopFireAnimation();
 
         m_swingFireBottom->setVisible(true);
@@ -4931,8 +4927,16 @@ void REPlayerObject::updateShipRotation(float dt) {
 }
 
 void REPlayerObject::updateShipSpriteExtra(gd::string frameName) {
-    //todo
-    PlayerObject::updateShipSpriteExtra(frameName);
+    auto spriteFrame = CCSpriteFrameCache::get()->spriteFrameByName(frameName.c_str());
+    if (!spriteFrame) {
+        m_vehicleSpriteWhitener->setVisible(false);
+    }
+    else {
+        m_vehicleSpriteWhitener->setDisplayFrame(spriteFrame);
+        m_vehicleSpriteWhitener->setVisible(true);
+
+        m_vehicleSpriteWhitener->setPosition(m_vehicleSprite->getContentSize() / 2);
+    }
 }
 
 void REPlayerObject::updateSlopeRotation(float dt) {
@@ -5016,15 +5020,15 @@ void REPlayerObject::updateSwingFire() {
 
     if (m_isUpsideDown == m_isSideways) {
         bottom = m_swingFireTop;
-        bottomParticles = m_swingBurstParticles1;
+        bottomParticles = m_swingBurstParticles2;
         top = m_swingFireBottom;
-        topParticles = m_swingBurstParticles2;
+        topParticles = m_swingBurstParticles1;
     }
     else {
         bottom = m_swingFireBottom;
-        bottomParticles = m_swingBurstParticles2;
+        bottomParticles = m_swingBurstParticles1;
         top = m_swingFireTop;
-        topParticles = m_swingBurstParticles1;
+        topParticles = m_swingBurstParticles2;
     }
 
     bottom->animateFireIn();
