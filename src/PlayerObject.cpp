@@ -5010,13 +5010,66 @@ void REPlayerObject::updateStreaks_(float dt) {
 }
 
 void REPlayerObject::updateSwingFire() {
-    //todo
-    PlayerObject::updateSwingFire();
+    PlayerFireBoostSprite* top;
+    PlayerFireBoostSprite* bottom;
+    CCParticleSystemQuad* topParticles;
+    CCParticleSystemQuad* bottomParticles;
+
+    if (m_isUpsideDown == m_isSideways) {
+        bottom = m_swingFireTop;
+        bottomParticles = m_swingBurstParticles1;
+        top = m_swingFireBottom;
+        topParticles = m_swingBurstParticles2;
+    }
+    else {
+        bottom = m_swingFireBottom;
+        bottomParticles = m_swingBurstParticles2;
+        top = m_swingFireTop;
+        topParticles = m_swingBurstParticles1;
+    }
+
+    bottom->animateFireIn();
+    bottomParticles->resumeSystem();
+    top->animateFireOut();
+    topParticles->stopSystem();
 }
 
 void REPlayerObject::updateTimeMod(float speed, bool noEffects) {
-    //todo
-    PlayerObject::updateTimeMod(speed, noEffects);
+    if (!m_maybeReducedEffects && m_playEffects && !noEffects && m_playerSpeed != speed) {
+        GameManager::get()->m_playLayer->playSpeedParticle(speed);
+    }
+
+    m_playerSpeed = speed;
+
+    if (speed == 0.9f) {
+        m_yStart = 11.180031776428223;
+        m_gravity = 0.9581990242004395;
+        m_speedMultiplier = 5.7700018882751465;
+    }
+    else if (speed == 0.7f) {
+        m_yStart = 10.620032;
+        m_gravity = 0.940199;
+        m_speedMultiplier = 5.980002;
+    }
+    else if (speed == 1.1f) {
+        m_yStart = 11.420032;
+        m_gravity = 0.957199;
+        m_speedMultiplier = 5.870002;
+    }
+    else if (speed == 1.3f || speed == 1.6f) {
+        m_yStart = 11.230032;
+        m_gravity = 0.961199;
+        m_speedMultiplier = 6.000002;
+    }
+    updateRobotAnimationSpeed();
+
+    if (m_isBall) {
+        runRotateAction_(false, 0);
+    }
+
+    if (m_shipStreak) {
+        updateStreakSettings__(m_shipStreak, m_shipStreakType, this);
+    }
 }
 
 bool REPlayerObject::usingWallLimitedMode_() {
