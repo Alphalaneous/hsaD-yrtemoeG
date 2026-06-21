@@ -18,8 +18,7 @@ void REPlayerObject::update(float dt) {
         double duration = m_flashDuration;
 
         if (elapsed < duration) {
-            float t = static_cast<float>(elapsed / duration);
-            t = std::clamp(t, 0.f, 1.f);
+            float t = elapsed / duration;
 
             auto mainColor = GameToolbox::multipliedColorValue(m_flashMainColor, m_originalMainColor, t);
             auto secondColor = GameToolbox::multipliedColorValue(m_flashSecondColor, m_originalSecondColor, t);
