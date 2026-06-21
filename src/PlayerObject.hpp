@@ -8,10 +8,11 @@ using namespace geode::prelude;
 
 class $modify(REPlayerObject, PlayerObject) {
 
-    void stopGroundParticles__();
-    std::string buildShipFireTextureName__(ShipStreak type, float time);
-    void updateStreak__(CCMotionStreak* streak, ShipStreak streakType, PlayerObject* player);
-    void scaleForStreak__(ShipStreak type, float speed, float scale, float* outA, float* outB);
+    static std::string getFrameForStreak__(ShipStreak type, float time);
+    static void snapRotation360__(float& rotaion);
+    static CCPoint offsetForStreak__(ShipStreak type);
+    static void getSettingsForStreak__(ShipStreak type, float speed, float scale, float& outA, float& outB);
+    static void updateStreakSettings__(CCMotionStreak* streak, ShipStreak streakType, PlayerObject* player);
 
     static PlayerObject* create(int player, int ship, GJBaseGameLayer* gameLayer, cocos2d::CCLayer* layer, bool playLayer);
     void update(float dt);
@@ -64,7 +65,7 @@ class $modify(REPlayerObject, PlayerObject) {
     void flashPlayer_(float flashDuration, float flashDelay, cocos2d::ccColor3B mainColor, cocos2d::ccColor3B secondColor);
     void flipGravity(bool flip, bool noEffects);
     int flipMod_();
-    void gameEventTriggered_(int gameEvent, int material);
+    void gameEventTriggered_(GJGameEvent gameEvent, int material);
     GameObjectType getActiveMode_();
     double getCurrentXVelocity_();
     float getModifiedSlopeYVel_();

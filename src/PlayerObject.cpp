@@ -18,30 +18,14 @@ void REPlayerObject::update(float dt) {
         double duration = m_flashDuration;
 
         if (elapsed < duration) {
-            float t = (float)(elapsed / duration);
+            float t = static_cast<float>(elapsed / duration);
             t = std::clamp(t, 0.f, 1.f);
 
-            auto lerpColor = [t](ccColor3B a, ccColor3B b) -> ccColor3B {
-                return {
-                    (uint8_t)(a.r + (b.r - a.r) * t),
-                    (uint8_t)(a.g + (b.g - a.g) * t),
-                    (uint8_t)(a.b + (b.b - a.b) * t)
-                };
-            };
-
-            auto mainColor = lerpColor(m_flashMainColor, m_originalMainColor);
-            auto secondColor = lerpColor(m_flashSecondColor, m_originalSecondColor);
+            auto mainColor = GameToolbox::multipliedColorValue(m_flashMainColor, m_originalMainColor, t);
+            auto secondColor = GameToolbox::multipliedColorValue(m_flashSecondColor, m_originalSecondColor, t);
 
             setColor(mainColor);
-
-            m_iconSpriteSecondary->setColor(secondColor);
-            m_vehicleSpriteSecondary->setColor(secondColor);
-
-            m_robotSprite->m_secondColor = secondColor;
-            m_robotSprite->updateColors();
-
-            m_spiderSprite->m_secondColor = secondColor;
-            m_spiderSprite->updateColors();
+            setSecondColor(secondColor);
         }
         else {
             m_flashTime = -1;
@@ -101,7 +85,7 @@ void REPlayerObject::update(float dt) {
             }
 
             auto stateForceYDelta = static_cast<double>(dt * m_stateForceVector.y * modeForceScale);
-            setYVelocity(stateForceYDelta + m_yVelocity, 0);
+            addToYVelocity_(stateForceYDelta, 0);
 
             if (stateForceYDelta != 0) {
                 m_isAccelerating = true;
@@ -121,22 +105,17 @@ void REPlayerObject::update(float dt) {
                     m_affectedByForces = true;
                 }
 
-                bool canAutoRotate = isInNormalMode() && !m_isRotating && std::abs(modeForceScale) > 0.1;
+                bool canAutoRotate = isInNormalMode_() && !m_isRotating && std::abs(modeForceScale) > 0.1;
 
                 if (canAutoRotate) {
-                    float rotateScale = m_vehicleSize == 1 ? 0.43333334f : 0.33333334f;
-                    int orientationSign = m_isSideways ? -1 : 1;
-                    int rotationDirectionDegrees = m_isGoingLeft ? -180 : 180;
-
-                    m_rotateSpeed = (rotationDirectionDegrees * flipMod()) * orientationSign * m_gravityMod / rotateScale;
-                    m_isRotating = true;
+                    runNormalRotation(true, 1);
                 }
             }
         }
 
         bool isDashing = m_isDashing;
         if (isDashing) {
-            m_yVelocity = 0;
+            setYVelocity(0, 0);
         }
 
         double scaledDt = dtModified;
@@ -147,7 +126,7 @@ void REPlayerObject::update(float dt) {
             isDashing = m_isDashing;
         }
 
-        double xOffset = m_isPlatformer ? m_platformerXVelocity : m_playerSpeed * m_speedMultiplier;
+        double xOffset = getCurrentXVelocity_();
         xOffset = xOffset * dt;
 
         double reverseDecayStep = xOffset * 0.02;
@@ -169,7 +148,7 @@ void REPlayerObject::update(float dt) {
         else if (m_isDart) {
             int bufferSign = m_jumpBuffered ? 1 : -1;
 
-            yOffset = std::abs(xOffset) * flipMod() * bufferSign;
+            yOffset = std::abs(xOffset) * flipMod_() * bufferSign;
             if (m_vehicleSize != 1) {
                 yOffset = yOffset + yOffset;
             }
@@ -231,7 +210,7 @@ void REPlayerObject::update(float dt) {
             if (m_hasGroundParticles) {
                 auto action = getActionByTag(3);
                 if (!action) {
-                    auto call = CCCallFunc::create(this, callfunc_selector(REPlayerObject::stopGroundParticles__));
+                    auto call = CCCallFunc::create(this, callfunc_selector(REPlayerObject::deactivateParticle_));
                     auto delay = CCDelayTime::create(0.06);
                     action = CCSequence::create(delay, call, nullptr);
                     runAction(action);
@@ -250,7 +229,7 @@ void REPlayerObject::update(float dt) {
     bool active = !m_isLocked && !m_isHidden;
     bool moving = !m_isPlatformer || m_holdingLeft || m_holdingRight || m_platformerMovingLeft || m_platformerMovingRight;
 
-    if (!m_isDart && (isFlying()) && m_isOnGround2 && m_yVelocity * flipMod() > -1 && active && moving) {
+    if (!m_isDart && (isFlying_()) && m_isOnGround2 && m_yVelocity * flipMod_() > -1 && active && moving) {
         m_vehicleGroundParticles->resumeSystem();
     }
     else {
@@ -262,16 +241,7 @@ void REPlayerObject::update(float dt) {
     if (m_playEffects) {
         if (!m_isGoingLeft) {
             auto gameManager = GameManager::get();
-
-            auto cameraX = gameManager->m_playLayer->m_gameState.m_cameraPosition2.x;
-            auto waveTrail = m_waveTrail;
-
-            while (waveTrail->m_pointArray->count() > 1) {
-                auto p = static_cast<PointNode*>(waveTrail->m_pointArray->objectAtIndex(1));
-                if (p->m_point.x > cameraX) break;
-
-                waveTrail->m_pointArray->removeObjectAtIndex(0, true);
-            }
+            m_waveTrail->clearBehindXPos(gameManager->m_playLayer->m_gameState.m_cameraPosition2.x);
         }
         else {
             auto winSize = CCDirector::get()->getWinSize();
@@ -281,12 +251,7 @@ void REPlayerObject::update(float dt) {
             float cameraZoom = gameManager->m_playLayer->m_gameState.m_cameraZoom;
             float thresholdX = cameraX + (winSize.width / cameraZoom);
 
-            while (m_waveTrail->m_pointArray->count() > 1) {
-                auto p = static_cast<PointNode*>(m_waveTrail->m_pointArray->objectAtIndex(1));
-                if (p->m_point.x > thresholdX) break;
-
-                m_waveTrail->m_pointArray->removeObjectAtIndex(0, true);
-            }
+            m_waveTrail->clearAboveXPos(thresholdX);
         }
     }
 
@@ -381,32 +346,11 @@ void REPlayerObject::update(float dt) {
         m_swingBurstParticles2->setRotation(angle2);
     }
 
-    m_stateJumpBuffered = m_jumpBuffered;
-    m_stateRingJump2 = m_stateRingJump;
-
-    m_touchedRing = false;
-    m_touchedCustomRing = false;
-    m_touchedGravityPortal = false;
-    m_maybeTouchedBreakableBlock = false;
-
-    --m_stateNoAutoJump;
-    --m_stateDartSlide;
-    --m_stateFlipGravity;
-    --m_stateHitHead;
-    --m_stateOnGround;
-
-    --m_stateBoostX;
-    --m_stateBoostY;
-    --m_maybeStateForce2;
-    --m_stateScale;
-    --m_stateForce;
-
-    m_stateForceVector = CCPoint{0, 0};
-
-    m_jumpPadRelated.clear();
+    updateJumpVariables_();
+    updateStateVariables_();
 
     if (m_shipStreak) {
-        auto textureName = buildShipFireTextureName__(m_shipStreakType, m_totalTime);
+        auto textureName = getFrameForStreak__(m_shipStreakType, m_totalTime);
         auto texture = CCTextureCache::get()->addImage(textureName.c_str(), false);
 
         m_shipStreak->setTexture(texture);
@@ -418,7 +362,7 @@ void REPlayerObject::update(float dt) {
     }
 }
 
-std::string REPlayerObject::buildShipFireTextureName__(ShipStreak type, float time) {
+std::string REPlayerObject::getFrameForStreak__(ShipStreak type, float time) { // FIX BINDINGS 0x386060 windows 2.2084 add to bindings, static method
     float frameRate;
     int frameCount;
 
@@ -469,15 +413,6 @@ std::string REPlayerObject::buildShipFireTextureName__(ShipStreak type, float ti
     result += ".png";
 
     return result;
-}
-
-void REPlayerObject::stopGroundParticles__() {
-    if (m_hasGroundParticles) {
-        m_playerGroundParticles->stopSystem();
-        m_hasGroundParticles = false;
-        return;
-    }
-    m_hasGroundParticles = false;
 }
 
 void REPlayerObject::setScaleX(float scale) {
@@ -649,7 +584,7 @@ void REPlayerObject::setPosition(cocos2d::CCPoint const& position) {
     }
 
     float offsetY = (particleOffset.y - 13.f) * verticalDir * m_vehicleSize;
-    float offsetX = reverseMod() * (particleOffset.x - 10.f) * m_vehicleSize;
+    float offsetX = reverseMod_() * (particleOffset.x - 10.f) * m_vehicleSize;
 
     auto finalParticleOffset = CCPoint{offsetX, offsetY};
 
@@ -688,7 +623,7 @@ void REPlayerObject::setPosition(cocos2d::CCPoint const& position) {
             angle -= rotatedSlidingSign * baseAngle;
         }
 
-        int horizontalDir = reverseMod();
+        int horizontalDir = reverseMod_();
 
         float x = std::cos(angle) * length * 0.5f * horizontalDir;
         float y = std::sin(angle) * length * 0.5f * horizontalDir;
@@ -700,12 +635,12 @@ void REPlayerObject::setPosition(cocos2d::CCPoint const& position) {
     }
 
     if (m_unkA29) {
-        auto offset = CCPoint{reverseMod() * m_vehicleSize, flipMod() * m_vehicleSize * -15.f};
+        auto offset = CCPoint{reverseMod_() * m_vehicleSize, flipMod_() * m_vehicleSize * -15.f};
         if (m_isSideways) std::swap(offset.x, offset.y);
         
         m_vehicleGroundParticles->setPosition(position + offset);
         m_vehicleGroundParticles->update(0);
-        m_vehicleGroundParticles->setGravity({-350.f, flipMod() * -300.f});
+        m_vehicleGroundParticles->setGravity({-350.f, flipMod_() * -300.f});
         m_vehicleGroundParticles->setRotation(m_isSideways ? 90.f : 0.f);
     }
 
@@ -717,24 +652,14 @@ void REPlayerObject::setPosition(cocos2d::CCPoint const& position) {
             m_regularTrail->setPosition(local);
         }
         else {
-            auto trailOffset = CCPoint{reverseMod() * 4.f, 0.f};
+            auto trailOffset = CCPoint{reverseMod_() * 4.f, 0.f};
             if (m_isSideways) std::swap(trailOffset.x, trailOffset.y);
             
             m_regularTrail->setPosition(m_trailingParticles->getPosition() + trailOffset);
 
             if (m_shipStreak) {
-                auto streakOffset = CCPoint{0.f, 0.f};
-
-                switch (m_shipStreakType) {
-                    case ShipStreak::ShipFire2: streakOffset = CCPoint{-8.f, -3.f}; break;
-                    case ShipStreak::ShipFire3: streakOffset = CCPoint{-8.f, -3.5f}; break;
-                    case ShipStreak::ShipFire4:
-                    case ShipStreak::ShipFire5: streakOffset = CCPoint{-14.f, -3.f}; break;
-                    case ShipStreak::ShipFire6: streakOffset = CCPoint{-14.f, -2.5f}; break;
-                    default: break;
-                }
-
-                streakOffset.x *= reverseMod();
+                auto streakOffset = offsetForStreak__(m_shipStreakType);
+                streakOffset.x *= reverseMod_();
 
                 auto world = m_mainLayer->convertToWorldSpace(m_vehicleSprite->getPosition() + streakOffset);
                 auto local = m_regularTrail->getParent()->convertToNodeSpace(world);
@@ -755,7 +680,7 @@ void REPlayerObject::setPosition(cocos2d::CCPoint const& position) {
         }
     }
     else {
-        auto trailOffset = CCPoint{reverseMod() * m_vehicleSize * -2.f, 0.f};
+        auto trailOffset = CCPoint{reverseMod_() * m_vehicleSize * -2.f, 0.f};
         if (m_isSideways) std::swap(trailOffset.x, trailOffset.y);
 
         m_regularTrail->setPosition(getPosition() + trailOffset);
@@ -766,6 +691,16 @@ void REPlayerObject::setPosition(cocos2d::CCPoint const& position) {
     }
 
     m_waveTrail->setPosition(getPosition());
+}
+
+CCPoint REPlayerObject::offsetForStreak__(ShipStreak type) {
+    switch (type) {
+        case ShipStreak::ShipFire2: return {-8.f, -3.f};
+        case ShipStreak::ShipFire3: return {-8.f, -3.5f};
+        case ShipStreak::ShipFire5: return {-14.f, -3.f};
+        case ShipStreak::ShipFire6: return {-14.f, -2.5f};
+        default: return {0, 0};
+    }
 }
 
 void REPlayerObject::setVisible(bool visible) {
@@ -822,11 +757,9 @@ void REPlayerObject::setColor(cocos2d::ccColor3B const& color) {
 
     m_iconSprite->setColor(color);
     m_vehicleSprite->setColor(color);
-    m_robotSprite->m_color = color;
-    m_robotSprite->updateColors();
 
-    m_spiderSprite->m_color = color;
-    m_spiderSprite->updateColors();
+    m_robotSprite->updateColor01(color);
+    m_spiderSprite->updateColor01(color);
 }
 
 void REPlayerObject::setFlipX(bool flipX) {
@@ -910,26 +843,8 @@ void REPlayerObject::resetObject() {
     setSecondColor(m_originalSecondColor);
 
     stopParticles();
-
-    m_stateOnGround = 0;
-    m_stateUnk = '\0';
-    m_stateNoStickX = '\0';
-    m_stateNoStickY = '\0';
-    m_stateUnk2 = '\0';
-    m_stateNoAutoJump = 0;
-    m_stateDartSlide = 0;
-    m_stateHitHead = 0;
-    m_stateFlipGravity = 0;
-    m_stateBoostX = 0;
-    m_stateBoostY = 0;
-    m_maybeStateForce2 = 0;
-    m_stateScale = 0;
-    m_stateForce = 0;
-
-    m_stateForceVector = CCPoint{0, 0};
-
-    m_touchingRings->removeAllObjects();
-    m_touchedRings.clear();
+    resetStateVariables_();
+    resetTouchedRings(true);
 
     std::fill(m_playerFollowFloats.begin(), m_playerFollowFloats.end(), 0.f);
 
@@ -937,18 +852,7 @@ void REPlayerObject::resetObject() {
     m_unk838 = 0.0;
 
     stopDashing();
-
-    if (!m_alwaysShowStreak) {
-        m_regularTrail->stopStroke();
-    }
-
-    if (m_fadeOutStreak) {
-        m_fadeOutStreak = false;
-
-        float duration = m_playEffects ? 0.2f : 0.6f;
-        fadeOutStreak2(duration);
-    }
-
+    deactivateStreak_(false);
     removePendingCheckpoint();
 
     if (m_spiderSprite) {
@@ -977,30 +881,17 @@ void REPlayerObject::resetObject() {
     m_currentPotentialSlope = nullptr;
     m_potentialSlopeMap.clear();
     m_unk669 = false;
-    m_collidedTopMinY = 0.0;
-    m_collidedBottomMaxY = 0.0;
-    m_collidedLeftMaxX = 0.0;
-    m_collidedRightMinX = 0.0;
+    resetCollisionValues_();
     m_totalTime = 0.0;
     m_maybeIsBoosted = false;
-    m_yVelocity = 0.0;
 
+    setYVelocity(0, 0);
     flipGravity(false, false);
-    toggleFlyMode(false, false);
-    toggleBirdMode(false, false);
-    toggleRollMode(false, false);
-    toggleDartMode(false, false);
-    toggleRobotMode(false, false);
-    toggleSpiderMode(false, false);
-    toggleSwingMode(false, false);
+    switchedToMode(GameObjectType::CubePortal);
 
     m_vehicleSize = 0.6f;
     togglePlayerScale(false, false);
-
-    m_isRotating = false;
-    m_isBallRotating2 = false;
-    m_isBallRotating = false;
-    m_rotationSpeed = 0.f;
+    stopRotation_(false, 0);
     setRotation(0.f);
 
     m_isDead = false;
@@ -1080,7 +971,7 @@ void REPlayerObject::activateStreak() {
         m_waveTrail->setOpacity(255);
         m_waveTrail->m_drawStreak = true;
 
-        m_waveTrail->updateStroke(0.f);
+        updateEffects_(0.f);
     }
 }
 
@@ -1114,7 +1005,7 @@ void REPlayerObject::addToYVelocity_(double yVelocity, int type) {
 void REPlayerObject::animatePlatformerJump(float scale) {
     bool noInput = !m_holdingLeft && !m_holdingRight && !m_platformerMovingLeft && !m_platformerMovingRight;
 
-    if (!noInput || !isInNormalMode()) return;
+    if (!noInput || !isInNormalMode_()) return;
 
     int rotation = static_cast<int>(getRotation());
     if (rotation < 0) rotation += 360;
@@ -1168,15 +1059,15 @@ void REPlayerObject::boostPlayer(float yVelocity) {
         yVel = yVel / 1000.0 + yVelInt;
     }
 
-    m_yVelocity = yVel;
+    setYVelocity(yVelocity, 0);
 
     if (!m_isDashing) {
-        if (isInNormalMode()) {
+        if (isInNormalMode_()) {
             m_isBallRotating2 = false;
             m_isBallRotating = false;
 
             float rotationDivisor = m_vehicleSize == 1.f ? 0.8666667f : 0.6666667f;
-            int rotationDegrees = flipMod() * -180;
+            int rotationDegrees = flipMod_() * -180;
 
             m_rotationSpeed = rotationDegrees / rotationDivisor;
             m_isRotating = true;
@@ -1228,25 +1119,7 @@ void REPlayerObject::bumpPlayer(float bumpMod, int objectType, bool noEffects, G
         }
     }
 
-    spiderTestJumpInternal(false);
-
-    if (m_gameLayer) {
-        m_gameLayer->gameEventTriggered(GJGameEvent::SpiderTeleport, 0, m_uniqueID);
-    }
-
-    if (isInBasicMode()) {
-        float rotation;
-
-        if (!m_isSideways) {
-            rotation = m_isUpsideDown ? 180.f : 0.f;
-        }
-        else {
-            rotation = m_isUpsideDown ? 90.f : 270.f;
-        }
-
-        setRotation(rotation);
-    }
-
+    spiderTestJump(false);
     playBumpEffect(44, nullptr);
 }
 
@@ -1300,7 +1173,7 @@ void REPlayerObject::checkSnapJumpToObject(GameObject* object) {
             midX = 90.f;
         }
 
-        int gravitySign = flipMod();
+        int gravitySign = flipMod_();
 
         bool matchesNear = std::abs(objectPosition.x - (snappedPosition.x + nearX)) <= tolerance && std::abs(objectPosition.y - (snappedPosition.y + gravitySign * 30.f)) <= tolerance;
         bool matchesFar = std::abs(objectPosition.x - (snappedPosition.x + farX)) <= tolerance && std::abs(objectPosition.y - (snappedPosition.y - gravitySign * 30.f)) <= tolerance;
@@ -1361,7 +1234,7 @@ void REPlayerObject::collidedWithSlopeInternal(float dt, GameObject* object, boo
 }
 
 float REPlayerObject::convertToClosestRotation(float rotation) {
-    bool usesSnappedRotation = !m_isShip && !m_isBird && !m_isDart && !m_isSwing && !m_isRobot && !m_isSpider && !m_isDashing;
+    bool usesSnappedRotation = !isFlying_() && !m_isRobot && !m_isSpider && !m_isDashing;
 
     if (!usesSnappedRotation) return rotation;
 
@@ -1412,7 +1285,7 @@ void REPlayerObject::copyAttributes(PlayerObject* player) {
     updateTimeMod(player->m_playerSpeed, false);
     togglePlayerScale(player->m_vehicleSize != 1.f, false);
 
-    setYVelocity(player->m_yVelocity, 0);
+    setYVelocity(player->getYVelocity(), 0);
 
     m_maybeReducedEffects = false;
 
@@ -1421,33 +1294,13 @@ void REPlayerObject::copyAttributes(PlayerObject* player) {
 }
 
 void REPlayerObject::createFadeOutDartStreak() {
-    auto fadeTrail = HardStreak::create();
-
-    fadeTrail->setBlendFunc(m_waveTrail->getBlendFunc());
-    fadeTrail->m_currentPoint = m_waveTrail->m_currentPoint;
-    fadeTrail->m_waveSize = m_waveTrail->m_waveSize;
-    fadeTrail->m_pulseSize = m_waveTrail->m_pulseSize;
-    fadeTrail->m_isSolid = m_waveTrail->m_isSolid;
-    fadeTrail->m_isFlipped = m_waveTrail->m_isFlipped;
-    fadeTrail->setOpacity(m_waveTrail->getOpacity());
-    fadeTrail->setColor(m_waveTrail->getColor());
-
-    if (m_waveTrail->m_pointArray) {
-        auto array = m_waveTrail->m_pointArray->data;
-
-        for (auto pointNode : CCArrayExt<PointNode, false>(m_waveTrail->m_pointArray)) {
-            if (!pointNode) continue;
-            fadeTrail->addPoint(pointNode->m_point);
-        }
-    }
+    auto fadeTrail = m_waveTrail->createDuplicate();
 
     m_waveTrail->getParent()->addChild(fadeTrail, m_waveTrail->getZOrder());
-
     fadeTrail->setPosition(m_waveTrail->getPosition());
-    fadeTrail->m_drawStreak = true;
 
-    fadeTrail->updateStroke(0.f);
-    fadeTrail->schedule(schedule_selector(HardStreak::updateStroke));
+    fadeTrail->resumeStroke();
+    fadeTrail->scheduleAutoUpdate();
 
     auto fade = CCFadeTo::create(0.5f, 0);
     auto cleanup = CCCallFunc::create(fadeTrail, callfunc_selector(CCNode::removeFromParent));
@@ -1564,8 +1417,10 @@ void REPlayerObject::createSpider(int frame) {
     }
 }
 
-void REPlayerObject::deactivateParticle_() {
-    if (m_hasGroundParticles) m_playerGroundParticles->stopSystem();
+void REPlayerObject::deactivateParticle_() { // FIX BINDINGS, is 0x38b8c0 on Windows 2.2084
+    if (m_hasGroundParticles) {
+        m_playerGroundParticles->stopSystem();
+    }
     m_hasGroundParticles = false;
 }
 
@@ -1578,14 +1433,13 @@ void REPlayerObject::deactivateStreak_(bool stop) {
 }
 
 bool REPlayerObject::destroyFromHitHead_() {
-    return isInBasicMode() && m_stateHitHead < 1;
+    return isInBasicMode_() && m_stateHitHead < 1;
 }
 
 void REPlayerObject::didHitHead() {
     if (m_stateFlipGravity <= 0) return;
-    
-    flipGravity(!m_isUpsideDown, true);
-    setYVelocity(flipMod() * -2, 1);
+
+    hardFlipGravity_();
 
     m_maybeIsBoosted = true;
     m_isOnGround2 = false;
@@ -1605,52 +1459,10 @@ void REPlayerObject::disablePlayerControls() {
     m_controlsDisabled = false;
     m_inputsLocked = true;
 
-    if (m_jumpBuffered) {
-        placeStreakPoint();
-    }
-
-    m_jumpBuffered = false;
-    m_stateRingJump = false;
-    m_touchedPad = true;
-
-    if (m_isDashing) {
-        stopDashing();
-    }
-
-    if (!m_inputsLocked) {
-        m_holdingButtons[2] = false;
-    }
-
-    if (!m_controlsDisabled) {
-        if (m_jumpBuffered) {
-            placeStreakPoint();
-        }
-
-        m_holdingLeft = false;
-
-        if (m_platformerXVelocity < 0.0) {
-            m_isMoving = false;
-        }
-    }
-
-    if (!m_inputsLocked) {
-        m_holdingButtons[3] = false;
-    }
-
-    if (!m_controlsDisabled) {
-        if (m_jumpBuffered) {
-            placeStreakPoint();
-        }
-
-        m_holdingRight = false;
-
-        if (m_platformerXVelocity > 0.0) {
-            m_isMoving = false;
-        }
-    }
-
+    releaseButton(PlayerButton::Jump);
     releaseButton(PlayerButton::Left);
     releaseButton(PlayerButton::Right);
+    releaseButton(static_cast<PlayerButton>(5));
 
     m_inputsLocked = false;
     m_controlsDisabled = true;
@@ -1687,7 +1499,7 @@ void REPlayerObject::doReversePlayer(bool reverse) {
     }
 
     m_waveTrail->m_isFlipped = reverse;
-    m_vehicleGroundParticles->setScaleX(sidewaysSign * ((reverse ? 0 : 1) * 2 - 1));
+    m_vehicleGroundParticles->setScaleX(sidewaysSign * reverseMod_());
 
     updatePlayerGlow();
     updatePlayerArt();
@@ -1699,12 +1511,7 @@ void REPlayerObject::doReversePlayer(bool reverse) {
     }
 
     if (m_isBall && !m_isLocked && !m_isDashing) {
-        m_isRotating = false;
-        m_isBallRotating2 = false;
-        m_isBallRotating = false;
-        m_rotationSpeed = 0.f;
-
-        runBallRotation(1.f);
+        runRotateAction_(0, 1);
     }
 }
 
@@ -1716,51 +1523,17 @@ void REPlayerObject::enableCustomGlowColor_(cocos2d::ccColor3B const& color) {
 void REPlayerObject::enablePlayerControls() {
     m_controlsDisabled = false;
 
-    bool holdingLeftButton = m_holdingButtons[2];
-    bool holdingRightButton = m_holdingButtons[3];
+    bool holdingLeftButton = m_holdingButtons[static_cast<int>(PlayerButton::Left)];
+    bool holdingRightButton = m_holdingButtons[static_cast<int>(PlayerButton::Right)];
 
     if (holdingLeftButton) {
-        if (!m_inputsLocked) {
-            m_holdingButtons[3] = false;
-            m_holdingButtons[2] = true;
-        }
-
-        if (!m_controlsDisabled) {
-            m_holdingLeft = true;
-            m_leftPressedFirst = true;
-
-            if (m_isSliding && !m_isSlidingRight) {
-                m_isSliding = false;
-                m_maybeSlopeForce = 0.0;
-            }
-
-            if (m_platformerXVelocity > 0.0) {
-                m_isMoving = false;
-            }
-        }
+        switchedDirTo(PlayerButton::Left);
     }
     else if (holdingRightButton) {
-        if (!m_inputsLocked) {
-            m_holdingButtons[3] = true;
-            m_holdingButtons[2] = false;
-        }
-
-        if (!m_controlsDisabled) {
-            m_holdingRight = true;
-            m_leftPressedFirst = false;
-
-            if (m_isSliding && m_isSlidingRight) {
-                m_isSliding = false;
-                m_maybeSlopeForce = 0.0;
-            }
-
-            if (m_platformerXVelocity < 0.0) {
-                m_isMoving = false;
-            }
-        }
+        switchedDirTo(PlayerButton::Right);
     }
 
-    if (m_holdingButtons[1]) {
+    if (m_holdingButtons[static_cast<int>(PlayerButton::Jump)]) {
         pushButton(PlayerButton::Jump);
     }
 }
@@ -1818,7 +1591,7 @@ void REPlayerObject::flipGravity(bool flip, bool noEffects) {
 
     if (m_gameLayer) {
         auto event = flip ? GJGameEvent::GravityInverted : GJGameEvent::GravityRestored;
-        m_gameLayer->gameEventTriggered(event, 0, m_uniqueID);
+        gameEventTriggered_(event, 0);
     }
 
     m_lastFlipTime = m_totalTime;
@@ -1830,17 +1603,7 @@ void REPlayerObject::flipGravity(bool flip, bool noEffects) {
         m_slopeFlipGravityRelated = !m_slopeFlipGravityRelated;
     }
 
-    m_collisionLogTop->removeAllObjects();
-    m_collisionLogBottom->removeAllObjects();
-    m_collisionLogLeft->removeAllObjects();
-    m_collisionLogRight->removeAllObjects();
-
-    m_unk50C = -1;
-    m_unk510 = -1;
-    m_lastCollisionBottom = -1;
-    m_lastCollisionTop = -1;
-    m_lastCollisionLeft = -1;
-    m_lastCollisionRight = -1;
+    resetCollisionLog_(true);
 
     if (!m_maybeReducedEffects) {
         m_yVelocity *= 0.5;
@@ -1867,11 +1630,7 @@ void REPlayerObject::flipGravity(bool flip, bool noEffects) {
     m_isOnGround = false;
 
     if (m_isBall) {
-        m_isRotating = false;
-        m_isBallRotating2 = false;
-        m_isBallRotating = false;
-        m_rotationSpeed = 0.f;
-
+        stopRotation_(false, 1);
         runBallRotation2();
         return;
     }
@@ -1885,14 +1644,14 @@ int REPlayerObject::flipMod_() {
     return m_isUpsideDown ? -1 : 1;
 }
 
-void REPlayerObject::gameEventTriggered_(int gameEvent, int material) {
+void REPlayerObject::gameEventTriggered_(GJGameEvent gameEvent, int material) {
     if (m_gameLayer) {
-        m_gameLayer->gameEventTriggered(static_cast<GJGameEvent>(gameEvent), material, static_cast<int>(this->m_uniqueID));
+        m_gameLayer->gameEventTriggered(gameEvent, material, static_cast<int>(m_uniqueID));
     }
 }
 
 GameObjectType REPlayerObject::getActiveMode_() {
-    if (isFlying()) {
+    if (isFlying_()) {
         return GameObjectType::ShipPortal;
     }
     else if (m_isBall) {
@@ -1963,9 +1722,7 @@ bool REPlayerObject::handleRotatedCollisionInternal(float dt, GameObject* object
     auto originalPosition = getPosition();
 
     rotateGameplayObject(object);
-    for (auto& entry : m_potentialSlopeMap) {
-        rotateGameplayObject(entry.second);
-    }
+    rotatePreSlopeObjects_();
 
     bool collided = false;
 
@@ -1976,15 +1733,13 @@ bool REPlayerObject::handleRotatedCollisionInternal(float dt, GameObject* object
         collided = collidedWithObjectInternal(dt, object, rect, skipCheck);
     }
 
-    auto rotatedPosition = getPosition();
-    auto restoredPosition = CCPoint{(rotatedPosition.y - originalPosition.y) + originalPosition.x, originalPosition.y - (rotatedPosition.x - originalPosition.x)};
+    auto pos = getPosition();
+    auto restoredPosition = CCPoint{(pos.y - originalPosition.y) + originalPosition.x, originalPosition.y - (pos.x - originalPosition.x)};
 
     setPosition(restoredPosition);
 
     unrotateGameplayObject(object);
-    for (auto& entry : m_potentialSlopeMap) {
-        unrotateGameplayObject(entry.second);
-    }
+    unrotatePreSlopeObjects_();
 
     return collided;
 }
@@ -1999,7 +1754,7 @@ void REPlayerObject::handleRotatedSlopeCollision_(float dt, GameObject* object, 
 
 void REPlayerObject::hardFlipGravity_() {
     flipGravity(!m_isUpsideDown, true);
-    setYVelocity(this->flipMod() * -2, 42);
+    setYVelocity(flipMod_() * -2, 42);
 }
 
 void REPlayerObject::hitGround(GameObject* object, bool notFlipped) {
@@ -2060,11 +1815,11 @@ bool REPlayerObject::isFlying_() {
 }
 
 bool REPlayerObject::isInBasicMode_() {
-    return !isFlying() && !m_isBall && !m_isSpider;
+    return !isFlying_() && !m_isBall && !m_isSpider;
 }
 
 bool REPlayerObject::isInNormalMode_() {
-    return !isFlying() && !m_isBall && !m_isRobot && !m_isSpider;
+    return !isFlying_() && !m_isBall && !m_isRobot && !m_isSpider;
 }
 
 bool REPlayerObject::isSafeFlip_(float flipTime) {
@@ -2072,7 +1827,7 @@ bool REPlayerObject::isSafeFlip_(float flipTime) {
 }
 
 bool REPlayerObject::isSafeHeadTest_() {
-    return isSafeFlip(0.2f) || isSafeMode(0.2f) || m_stateHitHead > 0;
+    return isSafeFlip_(0.2f) || isSafeMode_(0.2f) || m_stateHitHead > 0;
 }
 
 bool REPlayerObject::isSafeMode_(float changeTime) {
@@ -2086,7 +1841,7 @@ bool REPlayerObject::isSafeSpiderFlip_(float flipTime) {
 void REPlayerObject::levelFlipFinished() {
     m_trailingParticles->setLife(m_trailingParticleLife);
 
-    if (isFlying() || m_alwaysShowStreak) {
+    if (isFlying_() || m_alwaysShowStreak) {
         resetStreak();
         activateStreak();
 
@@ -2098,62 +1853,40 @@ void REPlayerObject::levelFlipFinished() {
 
 bool REPlayerObject::levelFlipping() {
     if (!m_playEffects) return false;
-
-    float flip = GameManager::get()->m_playLayer->m_gameState.m_levelFlipping;
-
-    return flip != 0.f && flip != 1.f;
+    return GameManager::get()->m_playLayer->isFlipping();
 }
 
 void REPlayerObject::levelWillFlip() {
     m_trailingParticles->setLife(m_trailingParticleLife * 0.3f);
-    m_regularTrail->stopStroke();
+    deactivateStreak_(true);
+}
 
-    if (!m_fadeOutStreak) return;
-    
-    m_fadeOutStreak = false;
-    fadeOutStreak2(m_playEffects ? 0.2f : 0.6f);
+void REPlayerObject::snapRotation360__(float& rotation) {
+    if (rotation > 180.f) {
+        rotation -= 360.f;
+    }
+    else if (rotation < -180.f) {
+        rotation += 360.f;
+    }
 }
 
 void REPlayerObject::limitDashRotation_(float& rotation) {
-    float offset;
+    float offset = 0.f;
     if (m_isSideways) {
         offset = m_isGoingLeft ? 90.f : -90.f;
         rotation += offset;
-        if (rotation > 180.f) {
-            rotation -= 360.f;
-        }
-        else if (rotation < -180.f) {
-            rotation += 360.f;
-        }
+        snapRotation360__(rotation);
     }
     else {
         if (m_isGoingLeft) {
             offset = 180.f;
             rotation += offset;
-            if (rotation > 180.f) {
-                rotation -= 360.f;
-            }
-            else if (rotation < -180.f) {
-                rotation += 360.f;
-            }
-        }
-        else {
-            offset = 0.f;
+            snapRotation360__(rotation);
         }
     }
     if (std::abs(rotation) > 90.f) {
-        if (rotation > 0.f) {
-            rotation += 180.f;
-        }
-        else {
-            rotation -= 180.f;
-        }
-        if (rotation > 180.f) {
-            rotation -= 360.f;
-        }
-        else if (rotation < -180.f) {
-            rotation += 360.f;
-        }
+        rotation = ((rotation <= 0.0f) ? -180.0f : 180.0f) - rotation;
+        snapRotation360__(rotation);
     }
     if (rotation > 70.f || rotation < -70.f) {
         if (rotation > 0.f) {
@@ -2170,12 +1903,7 @@ void REPlayerObject::limitDashRotation_(float& rotation) {
     }
     if (offset != 0.f) {
         rotation -= offset;
-        if (rotation > 180.f) {
-            rotation -= 360.f;
-        }
-        else if (rotation < -180.f) {
-            rotation += 360.f;
-        }
+        snapRotation360__(rotation);
     }
 }
 
@@ -2190,34 +1918,10 @@ void REPlayerObject::lockPlayer() {
     }
 
     m_isLocked = true;
-    m_isRotating = false;
-    m_isBallRotating2 = false;
-    m_isBallRotating = false;
-    m_rotationSpeed = 0.f;
+    stopRotation_(false, 1);
+    releaseButton(PlayerButton::Jump);
+    deactivateParticle_();
 
-    if (!m_inputsLocked) {
-        m_holdingButtons[1] = false;
-    }
-
-    if (!m_controlsDisabled) {
-        if (m_jumpBuffered) {
-            placeStreakPoint();
-        }
-
-        m_jumpBuffered = false;
-        m_stateRingJump = false;
-        m_touchedPad = true;
-
-        if (m_isDashing) {
-            stopDashing();
-        }
-    }
-
-    if (m_hasGroundParticles) {
-        m_playerGroundParticles->stopSystem();
-    }
-
-    m_hasGroundParticles = false;
     m_isOnGround2 = false;
 
     if (m_isDart) {
@@ -2323,12 +2027,7 @@ void REPlayerObject::playCompleteEffect(bool noEffects, bool instant) {
     }
 
     stopDashing();
-
-    if (m_hasGroundParticles) {
-        m_playerGroundParticles->stopSystem();
-    }
-
-    m_hasGroundParticles = false;
+    deactivateParticle_();
 
     m_trailingParticles->stopSystem();
     m_shipClickParticles->stopSystem();
@@ -2416,21 +2115,10 @@ void REPlayerObject::playDynamicSpiderRun() {
         return;
     }
 
-    const char* animation = m_spiderAnimationEnabled ? "run" : "run_fast";
-    m_spiderSprite->runAnimation(animation);
+    m_spiderSprite->runAnimation(m_spiderAnimationEnabled ? "run" : "run_fast");
 
     if (isWalk) {
-        auto sprite = m_spiderSprite->m_animationManager->m_sprite;
-        auto action = static_cast<CCFiniteTimeAction*>(sprite->getActionByTag(1));
-
-        //todo verify if duration is what I should be getting and setting (0x5c and 0x60)
-        if (action) {
-            if (action->getDuration() != 0) {
-                action->setDuration(0.f);
-            }
-
-            action->setDuration(0.1f);
-        }
+        m_spiderSprite->m_animationManager->offsetCurrentAnimation(0.1f);
     }
 }
 
@@ -2442,11 +2130,7 @@ void REPlayerObject::playerDestroyed(bool noEffects) {
     stopDashing();
 
     m_isDead = true;
-    m_isRotating = false;
-    m_isBallRotating2 = false;
-    m_isBallRotating = false;
-    m_rotationSpeed = 0.f;
-
+    stopRotation_(false, 1);
     stopParticles();
     m_lastPosition = getPosition();
 
@@ -2474,11 +2158,7 @@ bool REPlayerObject::playerIsFallingBugged() {
     double threshold = m_gravity * 2.0;
 
     if (m_isSideways || m_isPlatformer || m_isSwing || m_fixGravityBug) {
-        if (!m_isUpsideDown) {
-            return m_yVelocity < threshold;
-        }
-
-        return m_yVelocity > -threshold;
+        return playerIsFalling_(threshold);
     }
 
     double adjustedGravity = m_unkA99 ? -m_gravity : m_gravity;
@@ -2542,10 +2222,7 @@ void REPlayerObject::postCollision(float dt, bool betweenSteps) {
 void REPlayerObject::preCollision_() {
     m_wasTeleported = false;
     m_ringJumpRelated = false;
-    m_collidedTopMinY = 0.0;
-    m_collidedBottomMaxY = 0.0;
-    m_collidedLeftMaxX = 0.0;
-    m_collidedRightMinX = 0.0;
+    resetCollisionValues_();
     m_wasOnSlope = m_isOnSlope;
     m_isOnSlope = false;
     m_isOnGround4 = m_isOnGround2;
@@ -2577,8 +2254,8 @@ bool REPlayerObject::preSlopeCollision(float dt, GameObject* object) {
     auto slopeRect = object->getObjectRect();
     auto playerRect = getObjectRect();
 
-    bool checksLeftEdge = (object->m_slopeDirection >= 2 && object->m_slopeDirection <= 4) || object->m_slopeDirection == 6;
-    bool checksTopEdge = object->m_slopeDirection == 1 || object->m_slopeDirection == 3 || object->m_slopeDirection == 5 || object->m_slopeDirection == 6;
+    bool checksLeftEdge = object->slopeWallLeft();
+    bool checksTopEdge = object->slopeFloorTop();
 
     float slopeInset = 0.f;
     if (m_isPlatformer && (m_isOnSlope || m_wasOnSlope)) {
@@ -2661,7 +2338,7 @@ bool REPlayerObject::preSlopeCollision(float dt, GameObject* object) {
         auto currentSlope = m_currentPotentialSlope;
         if (currentSlope) {
 
-            bool checksTopEdgeCurrent = currentSlope->m_slopeDirection == 1 || currentSlope->m_slopeDirection == 3 || currentSlope->m_slopeDirection == 5 || currentSlope->m_slopeDirection == 6;
+            bool checksTopEdgeCurrent = currentSlope->slopeFloorTop();
             bool currentIsPreferred = (!currentSlope->m_slopeUphill || checksTopEdgeCurrent);
 
             bool objectIsPreferred = (!object->m_slopeUphill || checksTopEdge);
@@ -2697,25 +2374,13 @@ void REPlayerObject::propellPlayer(float yVelocity, bool noEffects, int objectTy
 
     float sizeScale = m_vehicleSize == 1.f ? 1.f : 0.8f;
 
-    setYVelocity(static_cast<double>(flipMod() * yVelocity * 16.f * sizeScale), 0);
+    setYVelocity(static_cast<double>(flipMod_() * yVelocity * 16.f * sizeScale), 0);
 
     if (m_isBall || m_isSpider || m_isSwing) {
         m_yVelocity *= 0.6;
     }
 
-    if (!m_isLocked && !m_isDashing) {
-        m_isRotating = false;
-        m_isBallRotating2 = false;
-        m_isBallRotating = false;
-        m_rotationSpeed = 0.f;
-
-        if (m_isBall) {
-            runBallRotation(1.f);
-        }
-        else {
-            runNormalRotation(false, 1.f);
-        }
-    }
+    runRotateAction_(false, 0);
 
     if (!noEffects) {
         playBumpEffect(objectType, nullptr);
@@ -2750,13 +2415,7 @@ bool REPlayerObject::pushButton(PlayerButton button) {
 
         m_ringRelatedSet.clear();
 
-        m_stateJumpBuffered = m_jumpBuffered;
-        m_stateRingJump2 = m_stateRingJump;
-
-        m_touchedRing = false;
-        m_touchedCustomRing = false;
-        m_touchedGravityPortal = false;
-        m_maybeTouchedBreakableBlock = false;
+        updateJumpVariables_();
 
         if (m_touchingRings->count() == 0) {
             bool canGroundJump = m_isOnGround && (m_isBall || ((!m_isShip && !m_isBird && !m_isDart && !m_isSwing) && m_jumpBuffered));
@@ -2813,7 +2472,7 @@ void REPlayerObject::pushDown_() {
 }
 
 void REPlayerObject::pushPlayer_(float yVelocity) {
-    addToYVelocity(yVelocity, 68);
+    addToYVelocity_(yVelocity, 68);
 }
 
 void REPlayerObject::redirectDash_(float rotation) {
@@ -2882,67 +2541,15 @@ void REPlayerObject::redirectPlayerForce(float rotation, float modifier, float m
     }
 
     m_isAccelerating = true;
-    m_yVelocity = velocity.y;
 
-    if (m_isPlatformer) {
-        m_affectedByForces = true;
-        m_platformerXVelocity = velocity.x;
-    }
+    updatePlayerForce_(velocity, false);
 }
 
 void REPlayerObject::releaseAllButtons() {
-    if (!m_inputsLocked) {
-        m_holdingButtons[1] = false;
-    }
-
-    if (!m_controlsDisabled) {
-        if (m_jumpBuffered) {
-            placeStreakPoint();
-        }
-
-        m_jumpBuffered = false;
-        m_stateRingJump = false;
-        m_touchedPad = true;
-
-        if (m_isDashing) {
-            stopDashing();
-        }
-    }
-
-    if (!m_inputsLocked) {
-        m_holdingButtons[2] = false;
-    }
-
-    if (!m_controlsDisabled) {
-        if (m_jumpBuffered) {
-            placeStreakPoint();
-        }
-
-        m_holdingLeft = false;
-
-        if (m_platformerXVelocity < 0.0) {
-            m_isMoving = false;
-        }
-    }
-
-    if (!m_inputsLocked) {
-        m_holdingButtons[3] = false;
-    }
-
-    if (!m_controlsDisabled) {
-        if (m_jumpBuffered) {
-            placeStreakPoint();
-        }
-
-        m_holdingRight = false;
-
-        if (m_platformerXVelocity > 0.0) {
-            m_isMoving = false;
-        }
-    }
-
+    releaseButton(PlayerButton::Jump);
     releaseButton(PlayerButton::Left);
     releaseButton(PlayerButton::Right);
+    releaseButton(static_cast<PlayerButton>(5));
 }
 
 bool REPlayerObject::releaseButton(PlayerButton button) {
@@ -3009,13 +2616,8 @@ void REPlayerObject::removePendingCheckpoint() {
     if (!m_pendingCheckpoint) return;
 
     auto checkpointObject = m_pendingCheckpoint->m_physicalCheckpointObject;
-    auto glowSprite = checkpointObject->m_glowSprite;
 
-    if (glowSprite) {
-        glowSprite->release();
-        glowSprite->removeFromParent();
-        checkpointObject->m_glowSprite = nullptr;
-    }
+    checkpointObject->removeGlow();
 
     checkpointObject->removeMeAndCleanup();
     m_pendingCheckpoint->release();
@@ -3071,19 +2673,7 @@ void REPlayerObject::resetPlayerIcon() {
     m_height = 30.f;
     m_unkAngle1 = 30.f;
 
-    if (!m_isLocked && !m_isDashing) {
-        m_isRotating = false;
-        m_isBallRotating2 = false;
-        m_isBallRotating = false;
-        m_rotationSpeed = 0.f;
-
-        if (m_isBall) {
-            runBallRotation(1.f);
-        }
-        else {
-            runNormalRotation(false, 1.f);
-        }
-    }
+    runRotateAction(false, 0);
 
     m_iconSprite->setScale(1.f);
     m_iconSprite->setPosition(CCPoint{0.f, 0.f});
@@ -3103,14 +2693,7 @@ void REPlayerObject::resetPlayerIcon() {
     auto trailColor = m_disableStreakTint ? ccColor3B{255, 255, 255} : m_playerColor2;
     m_regularTrail->setColor(trailColor);
 
-    if (!m_alwaysShowStreak) {
-        m_regularTrail->stopStroke();
-    }
-
-    if (m_fadeOutStreak) {
-        m_fadeOutStreak = false;
-        fadeOutStreak2(m_playEffects ? 0.2f : 0.6f);
-    }
+    deactivateStreak_(false);
 
     if (m_shipStreak) {
         m_shipStreak->setVisible(false);
@@ -3119,9 +2702,23 @@ void REPlayerObject::resetPlayerIcon() {
     updatePlayerScale();
 }
 
-void REPlayerObject::resetStateVariables_() { //inline defintion is sus
-    //todo
-    PlayerObject::resetStateVariables();
+void REPlayerObject::resetStateVariables_() { // FIX BINDINGS, Final 4 members here should be in inline definition
+    m_stateOnGround = 0;
+    m_stateNoAutoJump = 0;
+    m_stateDartSlide = 0;
+    m_stateHitHead = 0;
+    m_stateFlipGravity = 0;
+    m_stateBoostX = 0;
+    m_stateBoostY = 0;
+    m_maybeStateForce2 = 0;
+    m_stateScale = 0;
+    m_stateForce = 0;
+    m_stateForceVector = cocos2d::CCPoint {0.f, 0.f};
+    m_jumpPadRelated.clear();
+    m_stateUnk = '\0';
+    m_stateNoStickX = '\0';
+    m_stateNoStickY = '\0';
+    m_stateUnk2 = '\0';
 }
 
 void REPlayerObject::resetStreak() {
@@ -3132,8 +2729,7 @@ void REPlayerObject::resetStreak() {
     auto trailOffset = CCPoint{-5.f, 0.f};
     m_regularTrail->setPosition(getPosition() + trailOffset);
 
-    m_waveTrail->clear();
-    m_waveTrail->m_pointArray->removeAllObjects();
+    m_waveTrail->reset();
     m_waveTrail->setOpacity(255);
     m_waveTrail->stopAllActions();
     m_waveTrail->setPosition(-5.f, 0.f);
@@ -3186,7 +2782,7 @@ void REPlayerObject::ringJump(RingObject* object, bool skipCheck) {
 
 void REPlayerObject::rotateGameplay(int moveDirection, int groundDirection, bool editVelocity, float velocityModX, float velocityModY, bool overrideVelocity, bool dontSlide) {
     double oldYVelocity = m_yVelocity;
-    double oldXVelocity = m_isPlatformer ? m_platformerXVelocity : static_cast<double>(m_playerSpeed) * m_speedMultiplier;
+    double oldXVelocity = getCurrentXVelocity_();
 
     bool oldUpsideDown = m_isUpsideDown;
     bool oldSideways = m_isSideways;
@@ -3227,17 +2823,7 @@ void REPlayerObject::rotateGameplay(int moveDirection, int groundDirection, bool
             m_vehicleGroundParticles->resetSystem();
         }
 
-        m_collisionLogTop->removeAllObjects();
-        m_collisionLogBottom->removeAllObjects();
-        m_collisionLogLeft->removeAllObjects();
-        m_collisionLogRight->removeAllObjects();
-
-        m_unk50C = -1;
-        m_unk510 = -1;
-        m_lastCollisionBottom = -1;
-        m_lastCollisionTop = -1;
-        m_lastCollisionLeft = -1;
-        m_lastCollisionRight = -1;
+        resetCollisionLog_(true);
 
         auto velocity = CCPoint{static_cast<float>(oldXVelocity), static_cast<float>(oldYVelocity)};
 
@@ -3255,38 +2841,19 @@ void REPlayerObject::rotateGameplay(int moveDirection, int groundDirection, bool
         }
 
         m_isAccelerating = true;
-        m_yVelocity = velocity.y;
 
-        if (m_isPlatformer) {
-            m_affectedByForces = true;
-            m_platformerXVelocity = velocity.x;
-        }
+        updatePlayerForce_(velocity, false);
 
         m_maybeIsBoosted = true;
-        m_isOnGround2 = false;
-        m_lastGroundedPos = CCPoint{0.f, 0.f};
 
-        placeStreakPoint();
+        playerTeleported_();
 
         if (dontSlide) {
-            m_isAccelerating = false;
-            m_affectedByForces = false;
+            handlePlayerCommand_(543);
         }
 
-        bool canResetRotation = isInNormalMode() && !m_isRotating && !m_isLocked && !m_isDashing;
-
-        if (canResetRotation || (!m_isDashing && (!isInNormalMode() || m_isRotating || m_isLocked))) {
-            m_isRotating = false;
-            m_isBallRotating2 = false;
-            m_isBallRotating = false;
-            m_rotationSpeed = 0.f;
-
-            if (m_isBall) {
-                runBallRotation(1.f);
-            }
-            else {
-                runNormalRotation(false, 1.f);
-            }
+        if (isInNormalMode_() && !m_isRotating) {
+            runRotateAction_(false, 0);
         }
 
         if (m_isDashing) {
@@ -3330,12 +2897,8 @@ void REPlayerObject::rotateGameplayObject(GameObject* object) {
     auto rotatedPos = GJPointDouble{c * dx - s * dy + playerPos.x, c * dy + s * dx + playerPos.y};
     auto delta = GJPointDouble{rotatedPos.m_x - oldObjectPos.x, rotatedPos.m_y - oldObjectPos.y};
 
-    if (!object->m_tempOffsetXRelated) {
-        object->m_positionX += delta.m_x;
-    }
-
-    object->m_positionY += delta.m_y;
-    object->m_lastPosition = object->m_lastPosition + CCPoint{static_cast<float>(delta.m_x), static_cast<float>(delta.m_y)};
+    object->addToTempOffset(delta.m_x, delta.m_y);
+    object->setLastPosition(object->m_lastPosition + CCPoint{static_cast<float>(delta.m_x), static_cast<float>(delta.m_y)});
 
     object->m_startRotationX -= 90.f;
     object->m_startRotationY -= 90.f;
@@ -3383,7 +2946,7 @@ void REPlayerObject::runBallRotation(float speed) {
         speedScale = 0.5409375f;
     }
 
-    float rotationSpeed = (120.f * flipMod() * reverseMod()) / (sizeScale * 0.2f * speedScale);
+    float rotationSpeed = (120.f * flipMod_() * reverseMod_()) / (sizeScale * 0.2f * speedScale);
 
     if (m_isSideways) {
         rotationSpeed = -rotationSpeed;
@@ -3413,7 +2976,7 @@ void REPlayerObject::runBallRotation2() {
     }
 
     m_isBallRotating2 = true;
-    m_rotationSpeed = ((340.f * -flipMod() * reverseMod()) * m_gravityMod) / (sizeScale * 0.8f * speedScale);
+    m_rotationSpeed = ((340.f * -flipMod_() * reverseMod_()) * m_gravityMod) / (sizeScale * 0.8f * speedScale);
 }
 
 void REPlayerObject::runNormalRotation_() {
@@ -3421,7 +2984,7 @@ void REPlayerObject::runNormalRotation_() {
 }
 
 void REPlayerObject::runNormalRotation(bool notNormalMode, float speed) {
-    bool canRotate = notNormalMode || (!m_isShip && !m_isBird && !m_isDart && !m_isSwing && !m_isRobot && !m_isSpider && !m_isDashing && (!m_isPlatformer || m_holdingLeft || m_holdingRight || m_platformerMovingLeft || m_platformerMovingRight));
+    bool canRotate = notNormalMode || ((isInNormalMode_() || m_isBall) && !m_isDashing && (!m_isPlatformer || m_holdingLeft || m_holdingRight || m_platformerMovingLeft || m_platformerMovingRight));
 
     if (!canRotate) return;
     
@@ -3430,7 +2993,7 @@ void REPlayerObject::runNormalRotation(bool notNormalMode, float speed) {
     int sidewaysSign = m_isSideways ? -1 : 1;
 
     m_isRotating = true;
-    m_rotationSpeed = (((flipMod() * 180) * reverseMod()) * sidewaysSign * m_gravityMod * speed) / sizeScale;
+    m_rotationSpeed = (((flipMod_() * 180) * reverseMod_()) * sidewaysSign * m_gravityMod * speed) / sizeScale;
 }
 
 void REPlayerObject::runRotateAction_(bool ground, int type) {
@@ -3521,28 +3084,9 @@ void REPlayerObject::setupStreak() {
         float shipFade = 0.f;
         float shipWidth = 0.f;
 
-        if (m_shipStreakType == ShipStreak::ShipFire2) {
-            shipFade = 0.0636f;
-            shipWidth = 22.f;
-        }
-        else if (m_shipStreakType == ShipStreak::ShipFire3) {
-            shipFade = 0.1278f;
-            shipWidth = 28.6f;
-        }
-        else if (m_shipStreakType == ShipStreak::ShipFire4) {
-            shipFade = 0.105f;
-            shipWidth = 28.6f;
-        }
-        else if (m_shipStreakType == ShipStreak::ShipFire5) {
-            shipFade = 0.09f;
-            shipWidth = 18.7f;
-        }
-        else if (m_shipStreakType == ShipStreak::ShipFire6) {
-            shipFade = 0.096f;
-            shipWidth = 27.f;
-        }
+        getSettingsForStreak__(m_shipStreakType, 1.6f, 1.f, shipFade, shipWidth);
 
-        auto textureName = buildShipFireTextureName__(m_shipStreakType, 0);
+        auto textureName = getFrameForStreak__(m_shipStreakType, 0);
         auto texture = CCTextureCache::get()->addImage(textureName.c_str(), false);
 
         m_shipStreak = CCMotionStreak::create(shipFade, 1.f, shipWidth, ccColor3B{255, 255, 255}, texture);
@@ -3569,12 +3113,7 @@ void REPlayerObject::setupStreak() {
         m_waveTrail->setBlendFunc({GL_SRC_ALPHA, GL_ONE});
     }
 
-    m_regularTrail->stopStroke();
-
-    if (m_fadeOutStreak) {
-        m_fadeOutStreak = false;
-        fadeOutStreak2(m_playEffects ? 0.2f : 0.6f);
-    }
+    deactivateStreak_(true);
 }
 
 void REPlayerObject::setYVelocity(double velocity, int type) {
@@ -3601,19 +3140,11 @@ void REPlayerObject::spawnCircle() {
 
     m_parentLayer->addChild(wave);
 
-    if (wave->m_target) {
-        wave->m_target->release();
-    }
-
-    wave->m_target = this;
-    retain();
-
-    wave->unschedule(schedule_selector(CCCircleWave::updatePosition));
-    wave->setPosition(wave->m_target->getPosition());
+    wave->followObject(this, true);
 
     wave->m_delegate = gameManager->m_playLayer;
 
-    gameManager->m_playLayer->m_circleWaveArray->addObject(wave);
+    gameManager->m_playLayer->addCircle(wave);
     wave->m_circleMode = CircleMode::Outline;
 }
 
@@ -3639,18 +3170,10 @@ void REPlayerObject::spawnDualCircle() {
 
     m_parentLayer->addChild(wave);
 
-    if (wave->m_target) {
-        wave->m_target->release();
-    }
+    wave->followObject(this, true);
 
-    wave->m_target = this;
-    retain();
-
-    wave->unschedule(schedule_selector(CCCircleWave::updatePosition));
-    wave->setPosition(getPosition());
-
-    wave->m_delegate = gameManager->m_playLayer ? static_cast<CCCircleWaveDelegate*>(gameManager->m_playLayer) : nullptr;
-    gameManager->m_playLayer->m_circleWaveArray->addObject(wave);
+    wave->m_delegate = gameManager->m_playLayer;
+    gameManager->m_playLayer->addCircle(wave);
 }
 
 void REPlayerObject::spawnFromPlayer_(PlayerObject* player, bool flip) {
@@ -3709,7 +3232,7 @@ void REPlayerObject::spawnScaleCircle() {
     float startRadius = 50.f;
     float endRadius = 2.f;
     float duration = 0.25f;
-    ccColor3B color{255, 0, 150};
+    auto color = ccColor3B{255, 0, 150};
 
     bool isNormalSize = m_vehicleSize == 1.f;
     if (isNormalSize) {
@@ -3725,24 +3248,16 @@ void REPlayerObject::spawnScaleCircle() {
 
     m_parentLayer->addChild(wave);
 
-    if (wave->m_target) {
-        wave->m_target->release();
-    }
-
-    wave->m_target = this;
-    retain();
-
-    wave->unschedule(schedule_selector(CCCircleWave::updatePosition));
-    wave->setPosition(getPosition());
+    wave->followObject(this, true);
 
     wave->m_delegate = gameManager->m_playLayer;
-    gameManager->m_playLayer->m_circleWaveArray->addObject(wave);
+    gameManager->m_playLayer->addCircle(wave);
 }
 
 void REPlayerObject::specialGroundHit_() {
-    setYVelocity(flipMod() * -5, 47);
+    setYVelocity(flipMod_() * -5, 47);
 
-    if (!m_isBall && !isFlying()) {
+    if (!m_isBall && !isFlying_()) {
         stopRotation(false, 21);
     }
     m_maybeSpriteRelated = true;
@@ -3760,12 +3275,9 @@ void REPlayerObject::speedUp_() {
 
 void REPlayerObject::spiderTestJump(bool dynamic) {
     spiderTestJumpInternal(false);
+    gameEventTriggered_(GJGameEvent::SpiderTeleport, 0);
 
-    if (m_gameLayer) {
-        m_gameLayer->gameEventTriggered(GJGameEvent::SpiderTeleport, 0, m_uniqueID);
-    }
-
-    if (!isInBasicMode()) return;
+    if (!isInBasicMode_()) return;
 
     float rotation = 0.f;
 
@@ -3807,11 +3319,7 @@ void REPlayerObject::stopDashing() {
 }
 
 void REPlayerObject::stopParticles() {
-    if (m_hasGroundParticles) {
-        m_playerGroundParticles->stopSystem();
-    }
-
-    m_hasGroundParticles = false;
+    deactivateParticle_();
 
     m_trailingParticles->stopSystem();
     m_shipClickParticles->stopSystem();
@@ -3906,7 +3414,7 @@ bool REPlayerObject::switchedDirTo(PlayerButton button) {
             m_isMoving = false;
         }
     }
-    else {
+    else if (button == PlayerButton::Left){
         m_holdingLeft = true;
         m_leftPressedFirst = true;
 
@@ -3979,10 +3487,8 @@ void REPlayerObject::toggleBirdMode(bool enable, bool noEffects) {
         switchedToMode(GameObjectType::UfoPortal);
     }
 
-    m_isRotating = false;
-    m_isBallRotating2 = false;
-    m_isBallRotating = false;
-    m_rotationSpeed = 0.f;
+    stopRotation_(false, 0);
+
     m_yVelocity *= 0.5;
     setRotation(0.f);
 
@@ -4018,11 +3524,7 @@ void REPlayerObject::toggleBirdMode(bool enable, bool noEffects) {
         m_trailingParticles->resetSystem();
     }
 
-    if (m_hasGroundParticles) {
-        m_playerGroundParticles->stopSystem();
-    }
-
-    m_hasGroundParticles = false;
+    deactivateParticle_();
 
     if (!noEffects) {
         spawnPortalCircle({255, 200, 0}, 50.f);
@@ -4033,9 +3535,9 @@ void REPlayerObject::toggleBirdMode(bool enable, bool noEffects) {
 
     m_birdVehicle->setVisible(true);
 
-    updatePlayerArt();
-    updateDashArt();
-}
+    if (enable) {
+        modeDidChange_();
+    }}
 
 void REPlayerObject::toggleDartMode(bool enable, bool noEffects) {
     if (m_isDart == enable) return;
@@ -4047,10 +3549,8 @@ void REPlayerObject::toggleDartMode(bool enable, bool noEffects) {
         switchedToMode(GameObjectType::WavePortal);
     }
 
-    m_isRotating = false;
-    m_isBallRotating2 = false;
-    m_isBallRotating = false;
-    m_rotationSpeed = 0.f;
+    stopRotation_(false, 0);
+
     m_yVelocity *= 0.5;
     setRotation(0.f);
 
@@ -4085,16 +3585,11 @@ void REPlayerObject::toggleDartMode(bool enable, bool noEffects) {
 
         activateStreak();
         updatePlayerScale();
-
-        if (m_hasGroundParticles) {
-            m_playerGroundParticles->stopSystem();
-        }
-        m_hasGroundParticles = false;
+        deactivateParticle_();
 
         m_regularTrail->setColor(m_maybeIsVehicleGlowing ? ccColor3B{168, 155, 41} : ccColor3B{172, 155, 41});
 
-        m_waveTrail->clear();
-        m_waveTrail->m_pointArray->removeAllObjects();
+        m_waveTrail->reset();
         placeStreakPoint();
 
         if (m_playEffects && !m_maybeReducedEffects) {
@@ -4117,8 +3612,7 @@ void REPlayerObject::toggleDartMode(bool enable, bool noEffects) {
     m_regularTrail->setStroke(m_streakStrokeWidth * m_vehicleSize * streakScale);
 
     if (enable) {
-        updatePlayerArt();
-        updateDashArt();
+        modeDidChange_();
     }
 }
 
@@ -4132,10 +3626,7 @@ void REPlayerObject::toggleFlyMode(bool enable, bool noEffects) {
         switchedToMode(GameObjectType::ShipPortal);
     }
 
-    m_isRotating = false;
-    m_isBallRotating2 = false;
-    m_isBallRotating = false;
-    m_rotationSpeed = 0.f;
+    stopRotation_(false, 0);
     m_yVelocity *= 0.5;
     setRotation(0.f);
 
@@ -4183,10 +3674,7 @@ void REPlayerObject::toggleFlyMode(bool enable, bool noEffects) {
     m_shipClickParticles->stopSystem();
     m_hasShipParticles = false;
 
-    if (m_hasGroundParticles) {
-        m_playerGroundParticles->stopSystem();
-    }
-    m_hasGroundParticles = false;
+    deactivateParticle_();
 
     if (!noEffects) {
         spawnPortalCircle({255, 0, 255}, 50.f);
@@ -4200,8 +3688,7 @@ void REPlayerObject::toggleFlyMode(bool enable, bool noEffects) {
     }
 
     if (enable) {
-        updatePlayerArt();
-        updateDashArt();
+        modeDidChange_();
     }
 }
 
@@ -4211,14 +3698,7 @@ void REPlayerObject::toggleGhostEffect(GhostType type) {
     m_ghostType = type;
 
     if (m_ghostTrail) {
-        if (m_ghostTrail->m_delegate) {
-            //m_ghostTrail->m_delegate[0](m_ghostTrail);
-            //todo figure whateber this shit is? Does a delegate even exist???
-        }
-
-        m_ghostTrail->unscheduleAllSelectors();
-        m_ghostTrail->stopAllActions();
-        m_ghostTrail->removeMeAndCleanup();
+        m_ghostTrail->stopTrail();
         m_ghostTrail = nullptr;
     }
 
@@ -4230,13 +3710,7 @@ void REPlayerObject::toggleGhostEffect(GhostType type) {
     m_ghostTrail = ghostTrail;
 
     ghostTrail->m_playerObject = this;
-    ghostTrail->m_playerScale = m_vehicleSize;
     ghostTrail->m_opacity = 200.f;
-    ghostTrail->m_iconSprite = m_iconSprite;
-    ghostTrail->m_snapshotInterval = 0.05f;
-    ghostTrail->m_fadeInterval = 0.4f;
-    ghostTrail->m_ghostScale = 0.6f;
-    ghostTrail->m_scaleTwice = false;
 
     auto iconColor = m_iconSprite->getColor();
     bool isBlack = iconColor.r == 0 && iconColor.g == 0 && iconColor.b == 0;
@@ -4245,12 +3719,11 @@ void REPlayerObject::toggleGhostEffect(GhostType type) {
         ghostTrail->m_color = ccColor3B{0, 0, 0};
     }
     else {
-        ghostTrail->m_blendFunc.src = GL_SRC_ALPHA;
-        ghostTrail->m_blendFunc.dst = GL_ONE;
+        ghostTrail->doBlendAdditive();
         ghostTrail->m_color = m_playerColor1;
     }
 
-    ghostTrail->schedule(schedule_selector(GhostTrailEffect::trailSnapshot), 0.05f);
+    ghostTrail->runWithTarget(m_iconSprite, 0.05f, 0.4f, 0, 0.6f, false);
 
     auto objectLayer = GameManager::get()->m_playLayer->m_objectLayer;
 
@@ -4323,14 +3796,10 @@ void REPlayerObject::togglePlayerScale(bool enable, bool noEffects) {
     }
 
     if (m_shipStreak) {
-        updateStreak__(m_shipStreak, m_shipStreakType, this);
+        updateStreakSettings__(m_shipStreak, m_shipStreakType, this);
     }
 
-    auto oldScaleAction = static_cast<CCAction*>(m_actionManager->m_internalActions->objectForKey(6));
-    if (oldScaleAction) {
-        oldScaleAction->stop();
-        m_actionManager->m_internalActions->removeObjectForKey(6);
-    }
+    m_actionManager->stopInternalAction(6);
 
     float size = m_vehicleSize;
     bool shouldScale = true;
@@ -4374,30 +3843,25 @@ void REPlayerObject::togglePlayerScale(bool enable, bool noEffects) {
         setScaleY(size);
     }
 
-    if (m_isBall && m_isRotating && !m_isLocked && !m_isDashing) {
-        m_isRotating = false;
-        m_isBallRotating2 = false;
-        m_isBallRotating = false;
-        m_rotationSpeed = 0.f;
-
-        runBallRotation(1.f);
+    if (m_isBall && m_isRotating) {
+        runRotateAction_(false, 0);
     }
 
     placeStreakPoint();
     updateRobotAnimationSpeed();
 }
 
-void REPlayerObject::updateStreak__(CCMotionStreak* streak, ShipStreak streakType, PlayerObject* player) {
+void REPlayerObject::updateStreakSettings__(CCMotionStreak* streak, ShipStreak streakType, PlayerObject* player) {
     float fade = 0.f;
     float stroke = 0.f;
 
-    scaleForStreak__(streakType, player->m_playerSpeed, player->m_vehicleSize, &fade, &stroke);
+    getSettingsForStreak__(streakType, player->m_playerSpeed, player->m_vehicleSize, fade, stroke);
 
     streak->updateFade(fade);
     streak->setStroke(stroke);
 }
 
-void REPlayerObject::scaleForStreak__(ShipStreak type, float speed, float scale, float* outA, float* outB) {
+void REPlayerObject::getSettingsForStreak__(ShipStreak type, float speed, float scale, float& outA, float& outB) {
     float scaleMod = scale == 1.f ? 1.f : 0.5f;
     float a = 0.f;
     float b = 0.f;
@@ -4519,24 +3983,24 @@ void REPlayerObject::scaleForStreak__(ShipStreak type, float speed, float scale,
         a *= 0.6f;
     }
 
-    *outA = a;
-    *outB = b;
+    outA = a;
+    outB = b;
 
     if (speed == 0.7f) {
-        *outA *= 1.3f;
-        *outB *= 1.3f;
+        outA *= 1.3f;
+        outB *= 1.3f;
     }
     else if (speed == 0.9f) {
-        *outA *= 1.2f;
-        *outB *= 1.2f;
+        outA *= 1.2f;
+        outB *= 1.2f;
     }
     else if (speed == 1.1f) {
-        *outA *= 1.1f;
-        *outB *= 1.1f;
+        outA *= 1.1f;
+        outB *= 1.1f;
     }
     else if (speed == 1.3f) {
-        *outA *= 1.05f;
-        *outB *= 1.05f;
+        outA *= 1.05f;
+        outB *= 1.05f;
     }
 }
 
@@ -4551,10 +4015,7 @@ void REPlayerObject::toggleRobotMode(bool enable, bool noEffects) {
         switchedToMode(GameObjectType::RobotPortal);
 
         m_accelerationOrSpeed = 1.5f;
-        m_isRotating = false;
-        m_isBallRotating2 = false;
-        m_isBallRotating = false;
-        m_rotationSpeed = 0.f;
+        stopRotation_(false, 0);
         setRotation(0.f);
 
         auto gameManager = GameManager::get();
@@ -4606,15 +4067,10 @@ void REPlayerObject::toggleRobotMode(bool enable, bool noEffects) {
     }
 
     updatePlayerGlow();
-
-    m_isRotating = false;
-    m_isBallRotating2 = false;
-    m_isBallRotating = false;
-    m_rotationSpeed = 0.f;
+    stopRotation_(false, 0);
 
     if (enable) {
-        updatePlayerArt();
-        updateDashArt();
+        modeDidChange_();
     }
 }
 
@@ -4651,14 +4107,10 @@ void REPlayerObject::toggleRollMode(bool enable, bool noEffects) {
         }
     }
 
-    m_isRotating = false;
-    m_isBallRotating2 = false;
-    m_isBallRotating = false;
-    m_rotationSpeed = 0.f;
+    stopRotation_(false, 0);
 
     if (enable) {
-        updatePlayerArt();
-        updateDashArt();
+        modeDidChange_();
     }
 }
 
@@ -4677,10 +4129,7 @@ void REPlayerObject::toggleSpiderMode(bool enable, bool noEffects) {
         m_height = 27.f;
         m_accelerationOrSpeed = 1.5f;
 
-        m_isRotating = false;
-        m_isBallRotating2 = false;
-        m_isBallRotating = false;
-        m_rotationSpeed = 0.f;
+        stopRotation_(false, 0);
         setRotation(0.f);
 
         auto gameManager = GameManager::get();
@@ -4713,13 +4162,8 @@ void REPlayerObject::toggleSpiderMode(bool enable, bool noEffects) {
         updatePlayerScale();
         updatePlayerGlow();
 
-        m_isRotating = false;
-        m_isBallRotating2 = false;
-        m_isBallRotating = false;
-        m_rotationSpeed = 0.f;
-
-        updatePlayerArt();
-        updateDashArt();
+        stopRotation_(false, 0);
+        modeDidChange_();
     }
     else {
         m_mainLayer->removeChild(m_spiderBatchNode, false);
@@ -4742,10 +4186,7 @@ void REPlayerObject::toggleSpiderMode(bool enable, bool noEffects) {
         resetPlayerIcon();
         updatePlayerGlow();
 
-        m_isRotating = false;
-        m_isBallRotating2 = false;
-        m_isBallRotating = false;
-        m_rotationSpeed = 0.f;
+        stopRotation_(false, 0);
     }
 }
 
@@ -4759,10 +4200,7 @@ void REPlayerObject::toggleSwingMode(bool enable, bool noEffects) {
         switchedToMode(GameObjectType::SwingPortal);
     }
 
-    m_isRotating = false;
-    m_isBallRotating2 = false;
-    m_isBallRotating = false;
-    m_rotationSpeed = 0.f;
+    stopRotation_(false, 0);
     m_yVelocity *= 0.5;
     setRotation(0.f);
 
@@ -4818,8 +4256,7 @@ void REPlayerObject::toggleSwingMode(bool enable, bool noEffects) {
     }
 
     if (enable) {
-        updatePlayerArt();
-        updateDashArt();
+        modeDidChange_();
     }
 }
 
@@ -4833,12 +4270,7 @@ void REPlayerObject::toggleVisibility(bool visible) {
     if (!visible) {
         stopActionByTag(11);
 
-        m_regularTrail->stopStroke();
-
-        if (m_fadeOutStreak != visible) {
-            m_fadeOutStreak = visible;
-            fadeOutStreak2(m_playEffects == visible ? 0.6f : 0.2f);
-        }
+        deactivateStreak_(true);
 
         if (m_shipStreak) {
             m_shipStreak->setVisible(false);
@@ -4848,7 +4280,7 @@ void REPlayerObject::toggleVisibility(bool visible) {
         return;
     }
 
-    if (isFlying()) {
+    if (isFlying_()) {
         resetStreak();
         activateStreak();
         m_trailingParticles->resetSystem();
@@ -4927,13 +4359,8 @@ void REPlayerObject::unrotateGameplayObject(GameObject* object) {
     object->setObjectRectDirty(true);
 
     auto delta = it->second;
-
-    if (!object->m_tempOffsetXRelated) {
-        object->m_positionX -= delta.m_x;
-    }
-
-    object->m_positionY -= delta.m_y;
-    object->m_lastPosition = object->m_lastPosition + CCPoint{static_cast<float>(-delta.m_x), static_cast<float>(-delta.m_y)};
+    object->addToTempOffset(-delta.m_x, -delta.m_y);
+    object->setLastPosition(object->m_lastPosition + CCPoint{static_cast<float>(-delta.m_x), static_cast<float>(-delta.m_y)});
 
     object->m_startRotationX += 90.f;
     object->m_startRotationY += 90.f;
@@ -4957,9 +4384,24 @@ void REPlayerObject::updateCheckpointMode_(bool enable) {
     m_quickCheckpointMode = enable;
 }
 
-void REPlayerObject::updateCheckpointTest_() { // inline definition is sus
-    //todo
-    PlayerObject::updateCheckpointTest();
+void REPlayerObject::updateCheckpointTest_() {
+    if (m_canPlaceCheckpoint) {
+        tryPlaceCheckpoint();
+        m_canPlaceCheckpoint = false;
+    }
+    if (isFlying() && m_uniqueID == 1) {
+        if (m_onFlyCheckpointTries + 1 < 20) {
+            m_onFlyCheckpointTries++;
+        }
+        else {
+            m_onFlyCheckpointTries = 0;
+            tryPlaceCheckpoint();
+        }
+    }
+    if (m_checkpointTimeout) {
+        auto currentTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() / 1000.0;
+        if (currentTime - m_lastCheckpointTime > 0.1f) m_checkpointTimeout = false;
+    }
 }
 
 void REPlayerObject::updateCollide(PlayerCollisionDirection direction, GameObject* object) {
@@ -4978,147 +4420,100 @@ void REPlayerObject::updateCollide(PlayerCollisionDirection direction, GameObjec
         return;
     }
 
-    int objectId = object ? object->m_uniqueID : 0;
-    int gravitySign = flipMod();
-
     if (direction == PlayerCollisionDirection::Top) {
-        double collideY = position.y + gravitySign * halfHeight;
-        double bestY = collideY;
-
-        if (m_collidedTopMinY != 0.0) {
-            bestY = m_collidedTopMinY;
-
-            if (!m_isUpsideDown) {
-                if (collideY <= m_collidedTopMinY) {
-                    bestY = collideY;
-                }
-            }
-            else if (m_collidedTopMinY <= collideY) {
-                bestY = collideY;
-            }
-        }
-
-        m_collidedTopMinY = bestY;
-
-        if (objectId == 0 || objectId == m_lastCollisionTop) return;
-
-        m_lastCollisionTop = objectId;
-
-        if (m_collisionLogTop) {
-            m_collisionLogTop->setObject(m_maybeLastGroundObject, objectId);
-        }
-
+        updateCollideTop_(position.y + halfHeight, object);
         return;
     }
 
     if (direction == PlayerCollisionDirection::Bottom) {
-        double collideY = position.y - gravitySign * halfHeight;
-        double bestY = collideY;
-
-        if (m_collidedBottomMaxY != 0.0) {
-            bestY = m_collidedBottomMaxY;
-
-            if (!m_isUpsideDown) {
-                if (m_collidedBottomMaxY <= collideY) {
-                    bestY = collideY;
-                }
-            }
-            else if (collideY <= m_collidedBottomMaxY) {
-                bestY = collideY;
-            }
-        }
-
-        m_collidedBottomMaxY = bestY;
-
-        if (objectId == 0 || objectId == m_lastCollisionBottom) {
-            return;
-        }
-
-        m_lastCollisionBottom = objectId;
-
-        if (m_collisionLogBottom) {
-            m_collisionLogBottom->setObject(m_maybeLastGroundObject, objectId);
-        }
+        updateCollideBottom_(position.y + halfHeight, object);
+        return;
     }
 }
 
 void REPlayerObject::updateCollideBottom_(float y, GameObject* object) {
-    auto id = object ? object->m_uniqueID : 0;
-    if (m_collidedBottomMaxY == 0.0) {
-        m_collidedBottomMaxY = y;
-    }
-    else {
-        m_collidedBottomMaxY = m_isUpsideDown ? std::min<double>(m_collidedBottomMaxY, y) : std::max<double>(m_collidedBottomMaxY, y);
+    int id = object ? object->m_uniqueID : 0;
+
+    double bestY = y;
+
+    if (m_collidedBottomMaxY != 0.0) {
+        if (!m_isUpsideDown) {
+            if (y < m_collidedBottomMaxY) {
+                bestY = y;
+            }
+        }
+        else {
+            if (m_collidedBottomMaxY < y) {
+                bestY = y;
+            }
+        }
     }
 
+    m_collidedBottomMaxY = bestY;
+
     if (id != 0) {
-        storeCollision(PlayerCollisionDirection::Bottom, id);
+        storeCollision_(PlayerCollisionDirection::Bottom, id);
     }
 }
 
 void REPlayerObject::updateCollideLeft(float x, GameObject* object) {
     int id = object ? object->m_uniqueID : 0;
 
-    double collideX = x;
-    double bestX = collideX;
+    double bestX = x;
 
-    if (m_collidedLeftMaxX != 0.0 && m_collidedLeftMaxX > collideX) {
+    if (m_collidedLeftMaxX != 0.0 && m_collidedLeftMaxX <= x) {
         bestX = m_collidedLeftMaxX;
     }
 
     m_collidedLeftMaxX = bestX;
 
-    if (id == 0) return;
-    
-    if (id != m_lastCollisionLeft) {
-        m_lastCollisionLeft = id;
-
-        if (m_collisionLogLeft) {
-            m_collisionLogLeft->setObject(m_maybeLastGroundObject, id);
-        }
+    if (id != 0) {
+        storeCollision_(PlayerCollisionDirection::Left, id);
+        m_collidingWithLeft = object;
+        m_collidingWithRight = nullptr;
     }
-
-    m_collidingWithLeft = object;
-    m_collidingWithRight = nullptr;
 }
 
 void REPlayerObject::updateCollideRight(float x, GameObject* object) {
     int id = object ? object->m_uniqueID : 0;
 
-    double collideX = x;
-    double bestX = collideX;
+    double bestX = x;
 
-    if (m_collidedRightMinX != 0.0 && m_collidedRightMinX > collideX) {
+    if (m_collidedRightMinX != 0.0 && x <= m_collidedRightMinX) {
         bestX = m_collidedRightMinX;
     }
 
     m_collidedRightMinX = bestX;
 
-    if (id == 0) return;
-    
-    if (id != m_lastCollisionRight) {
-        m_lastCollisionRight = id;
-
-        if (m_collisionLogRight) {
-            m_collisionLogRight->setObject(m_maybeLastGroundObject, id);
-        }
+    if (id != 0) {
+        storeCollision_(PlayerCollisionDirection::Left, id);
+        m_collidingWithRight = object;
+        m_collidingWithLeft = nullptr;
     }
-
-    m_collidingWithRight = object;
-    m_collidingWithLeft = nullptr;
 }
 
 void REPlayerObject::updateCollideTop_(float y, GameObject* object) {
-    auto id = object ? object->m_uniqueID : 0;
-    if (m_collidedTopMinY == 0.0) {
-        m_collidedTopMinY = y;
-    }
-    else {
-        m_collidedTopMinY = m_isUpsideDown ? std::max<double>(m_collidedTopMinY, y) : std::min<double>(m_collidedTopMinY, y);
+    int id = object ? object->m_uniqueID : 0;
+
+    double bestY = y;
+
+    if (m_collidedTopMinY != 0.0) {
+        if (!m_isUpsideDown) {
+            if (m_collidedTopMinY < y) {
+                bestY = y;
+            }
+        }
+        else {
+            if (y < m_collidedTopMinY) {
+                bestY = y;
+            }
+        }
     }
 
+    m_collidedTopMinY = bestY;
+
     if (id != 0) {
-        storeCollision(PlayerCollisionDirection::Top, id);
+        storeCollision_(PlayerCollisionDirection::Top, id);
     }
 }
 
@@ -5201,9 +4596,7 @@ void REPlayerObject::updateDashArt() {
         m_dashFireSprite->setScaleY(0.8f);
     }
 
-    bool usesSpinDashArt = !m_isShip && !m_isBird && !m_isDart && !m_isSwing && !m_isRobot && !m_isSpider;
-
-    if (!usesSpinDashArt) return;
+    if (!isInNormalMode_() && !m_isBall) return;
     
     m_iconSprite->setScale(0.9f);
     m_iconGlow->setScale(0.9f);
@@ -5293,10 +4686,10 @@ void REPlayerObject::updateMove(float dt) {
 }
 
 void REPlayerObject::updatePlayerArt() {
-    m_mainLayer->setScaleX(reverseMod());
+    m_mainLayer->setScaleX(reverseMod_());
 
-    if (!m_isSwing && !m_isBall && !isInNormalMode()) {
-        m_mainLayer->setScaleY((m_isSideways ? -1 : 1) * flipMod());
+    if (!m_isSwing && !m_isBall && !isInNormalMode_()) {
+        m_mainLayer->setScaleY((m_isSideways ? -1 : 1) * flipMod_());
     }
     else {
         m_mainLayer->setScaleY(1);
@@ -5306,7 +4699,7 @@ void REPlayerObject::updatePlayerArt() {
 
     m_mainLayer->setRotation(baseRotation);
 
-    int flip = flipMod();
+    int flip = flipMod_();
     float angle1;
 
     if (!m_isSideways) {
@@ -5323,7 +4716,7 @@ void REPlayerObject::updatePlayerArt() {
     m_trailingParticles->setAngle(angle1);
     m_shipClickParticles->setAngle(angle1);
 
-    float gravityY = flipMod() * -300.f;
+    float gravityY = flipMod_() * -300.f;
     auto gravity = CCPoint{0.f, gravityY};
 
     if (m_isSideways) {
@@ -5562,10 +4955,23 @@ void REPlayerObject::updateSpecial_(float dt) {
     m_playerFollowFloats[m_followRelated % 200] = m_obPosition.y;
 }
 
-void REPlayerObject::updateStateVariables_() { //inline definition is sus
-    //todo
-
-    PlayerObject::updateStateVariables();
+void REPlayerObject::updateStateVariables_() { // FIX BINDINGS, Final 4 members here should be in inline definition
+    m_stateNoAutoJump--;
+    m_stateDartSlide--;
+    m_stateFlipGravity--;
+    m_stateHitHead--;
+    m_stateOnGround--;
+    m_stateBoostX--;
+    m_stateBoostY--;
+    m_maybeStateForce2--;
+    m_stateScale--;
+    m_stateForce--;
+    m_stateForceVector = cocos2d::CCPoint { 0.f, 0.f };
+    m_jumpPadRelated.clear();
+    m_stateUnk = '\0';
+    m_stateNoStickX = '\0';
+    m_stateNoStickY = '\0';
+    m_stateUnk2 = '\0';
 }
 
 void REPlayerObject::updateStaticForce_(float rotation, float staticForce, bool additive) {
@@ -5614,7 +5020,7 @@ void REPlayerObject::updateTimeMod(float speed, bool noEffects) {
 }
 
 bool REPlayerObject::usingWallLimitedMode_() {
-    return isFlying() || m_isBall || m_isSpider;
+    return isFlying_() || m_isBall || m_isSpider;
 }
 
 void REPlayerObject::yStartDown_() {
