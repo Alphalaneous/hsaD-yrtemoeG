@@ -339,10 +339,10 @@ void REPlayerObject::update(float dt) {
         float rotation = getRotation();
 
         float angle1 = (45.f - rotation) - 180.f;
-        m_swingBurstParticles1->setRotation(angle1 + (m_isGoingLeft ? 90 : 0));
+        m_swingBurstParticles1->setAngle(angle1 + (m_isGoingLeft ? 90 : 0));
 
         float angle2 = (-rotation - 45.f) - 180.f;
-        m_swingBurstParticles2->setRotation(angle2 + (m_isGoingLeft ? -90 : 0));
+        m_swingBurstParticles2->setAngle(angle2 + (m_isGoingLeft ? -90 : 0));
     }
 
     updateJumpVariables_();
